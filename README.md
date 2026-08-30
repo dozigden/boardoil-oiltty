@@ -10,7 +10,21 @@ Guaranteed smaller memory footprint than Chrome.
 
 ![OilTTY board view](OilTTY-board.png)
 
-Or why should web pages have all the dual theme fun? Light mode, just a ctrl-t away.
+## Features
+
+### Basics
+
+OilTTY supports basic board navigation and card editing.  More advanced features are out - gotta keep that memory footprint down.
+
+You can switch board, create, move, and edit cards. You'll have to wait for creating tags, types, and slicks though.
+
+### Full slick rendering
+
+Are you a macOS Safari user fed up of your slicks not spanning columns? Good news! Coloured text offers a better experience than Safari! Slicks render fully across columns in OilTTY.
+
+### Light mode
+
+Why should web pages have all the dual theme fun? Light mode, just a ctrl-t away.
 
 ![OilTTY board view in light mode](OilTTY-board-light.png)
 
