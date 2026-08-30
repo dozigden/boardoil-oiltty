@@ -5,10 +5,40 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Authors>Luke Easter</Authors>
+    <Copyright>Copyright (c) 2026 Luke Easter</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/dozigden/boardoil-oiltty</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="OilTTY.Tests" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="IncludeDotNetRuntimeLegalFiles"
+          BeforeTargets="GetCopyToPublishDirectoryItems"
+          DependsOnTargets="ResolveFrameworkReferences"
+          Condition="'$(SelfContained)' == 'true'">
+    <ItemGroup>
+      <_DotNetRuntimeLicense Include="$([System.IO.Path]::Combine('%(ResolvedRuntimePack.PackageDirectory)', 'LICENSE.TXT'))"
+                            Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'" />
+      <_DotNetRuntimeNotices Include="$([System.IO.Path]::Combine('%(ResolvedRuntimePack.PackageDirectory)', 'THIRD-PARTY-NOTICES.TXT'))"
+                            Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'" />
+      <ContentWithTargetPath Include="@(_DotNetRuntimeLicense)"
+                             TargetPath="DOTNET-LICENSE.txt"
+                             CopyToPublishDirectory="PreserveNewest"
+                             ExcludeFromSingleFile="true" />
+      <ContentWithTargetPath Include="@(_DotNetRuntimeNotices)"
+                             TargetPath="DOTNET-THIRD-PARTY-NOTICES.txt"
+                             CopyToPublishDirectory="PreserveNewest"
+                             ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
 
 </Project>

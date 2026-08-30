@@ -68,3 +68,9 @@ Other runtime identifiers, such as `linux-arm64`, `win-x64`, or `osx-arm64`, may
 ## The small print (read this bit really fast)
 
 OilTTY requires a separate [BoardOil](https://github.com/dozigden/boardoil) install. OilTTY stores the selected server and login session in your user application-data directory. Session files contain a refresh token and are restricted to the current user where supported, but are not stored in an operating-system credential vault.
+
+## License
+
+OilTTY is licensed under the [MIT License](LICENSE). See
+[Third-party notices](THIRD-PARTY-NOTICES.md) for the components used to build,
+test, and distribute it.
