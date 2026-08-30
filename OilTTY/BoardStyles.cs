@@ -20,42 +20,131 @@ internal readonly record struct SurfaceStyle(
     }
 }
 
+internal enum OilTTYTheme
+{
+    Dark,
+    Light
+}
+
+internal sealed record BoardPalette(
+    Rgb RootBackground,
+    Rgb PanelBackground,
+    Rgb CardBackground,
+    Rgb TextStrong,
+    Rgb TextMuted,
+    Rgb BorderSoft,
+    Rgb Selection,
+    Rgb Connected,
+    Rgb Danger,
+    Rgb TagAutoBackground,
+    Rgb TagAutoText,
+    Rgb TagAutoBorder,
+    IReadOnlyList<Rgb> Presets,
+    double SlickSurfaceAmount);
+
 internal static class BoardStyles
 {
-    public static readonly Rgb RootBackground = new(16, 23, 34);
-    public static readonly Rgb PanelBackground = new(22, 29, 39);
-    public static readonly Rgb CardBackground = new(30, 38, 51);
-    public static readonly Rgb TextStrong = new(233, 238, 246);
-    public static readonly Rgb TextMuted = new(147, 161, 186);
-    public static readonly Rgb BorderSoft = new(63, 76, 99);
-    public static readonly Rgb Selection = new(202, 184, 239);
-    public static readonly Rgb CardShadow = Mix(RootBackground, Selection, 0.22);
-    public static readonly Rgb FieldAnchorPlaceholder = Mix(BorderSoft, Selection, 0.42);
-    public static readonly Rgb ScrollIndicator = Mix(BorderSoft, Selection, 0.4);
-    public static readonly Rgb Connected = new(50, 205, 160);
-    public static readonly Rgb Danger = new(255, 159, 164);
-    public static readonly Rgb InputActiveBackground = Mix(RootBackground, Selection, 0.18);
-
     private static readonly Rgb MixDark = new(17, 24, 39);
-    private static readonly Rgb TagAutoBackground = new(42, 34, 56);
-    private static readonly Rgb TagAutoText = new(239, 231, 255);
-    private static readonly Rgb TagAutoBorder = new(94, 77, 118);
+    private static readonly Rgb MixLight = new(255, 255, 255);
 
-    private static readonly Rgb[] Presets =
-    [
-        new(89, 65, 127),
-        new(141, 83, 119),
-        new(40, 107, 120),
-        new(115, 93, 50),
-        new(130, 59, 71),
-        new(59, 92, 148),
-        new(133, 75, 50),
-        new(40, 105, 76),
-        new(95, 119, 48),
-        new(111, 102, 96),
-        new(117, 107, 45),
-        new(65, 74, 87)
-    ];
+    private static readonly BoardPalette DarkPalette = new(
+        RootBackground: new(16, 23, 34),
+        PanelBackground: new(22, 29, 39),
+        CardBackground: new(30, 38, 51),
+        TextStrong: new(233, 238, 246),
+        TextMuted: new(147, 161, 186),
+        BorderSoft: new(63, 76, 99),
+        Selection: new(202, 184, 239),
+        Connected: new(50, 205, 160),
+        Danger: new(255, 159, 164),
+        TagAutoBackground: new(42, 34, 56),
+        TagAutoText: new(239, 231, 255),
+        TagAutoBorder: new(94, 77, 118),
+        Presets:
+        [
+            new(89, 65, 127),
+            new(141, 83, 119),
+            new(40, 107, 120),
+            new(115, 93, 50),
+            new(130, 59, 71),
+            new(59, 92, 148),
+            new(133, 75, 50),
+            new(40, 105, 76),
+            new(95, 119, 48),
+            new(111, 102, 96),
+            new(117, 107, 45),
+            new(65, 74, 87)
+        ],
+        SlickSurfaceAmount: 0.12);
+
+    private static readonly BoardPalette LightPalette = new(
+        RootBackground: new(255, 255, 255),
+        PanelBackground: new(237, 242, 250),
+        CardBackground: new(255, 255, 255),
+        TextStrong: new(31, 41, 55),
+        TextMuted: new(111, 131, 160),
+        BorderSoft: new(201, 211, 227),
+        Selection: new(91, 37, 148),
+        Connected: new(23, 97, 61),
+        Danger: new(159, 43, 43),
+        TagAutoBackground: new(241, 235, 251),
+        TagAutoText: new(43, 18, 71),
+        TagAutoBorder: new(216, 205, 236),
+        Presets:
+        [
+            new(95, 59, 138),
+            new(217, 130, 184),
+            new(79, 158, 174),
+            new(213, 168, 77),
+            new(169, 59, 73),
+            new(127, 165, 224),
+            new(226, 116, 61),
+            new(59, 147, 104),
+            new(145, 182, 74),
+            new(194, 184, 177),
+            new(230, 212, 90),
+            new(81, 89, 102)
+        ],
+        SlickSurfaceAmount: 0.10);
+
+    private static BoardPalette _palette = DarkPalette;
+    private static OilTTYTheme _theme = OilTTYTheme.Dark;
+
+    public static Rgb RootBackground => _palette.RootBackground;
+    public static Rgb PanelBackground => _palette.PanelBackground;
+    public static Rgb CardBackground => _palette.CardBackground;
+    public static Rgb TextStrong => _palette.TextStrong;
+    public static Rgb TextMuted => _palette.TextMuted;
+    public static Rgb BorderSoft => _palette.BorderSoft;
+    public static Rgb Selection => _palette.Selection;
+    public static Rgb CardShadow => Mix(RootBackground, Selection, 0.22);
+    public static Rgb FieldAnchorPlaceholder => Mix(BorderSoft, Selection, 0.42);
+    public static Rgb ScrollIndicator => Mix(BorderSoft, Selection, 0.4);
+    public static Rgb Connected => _palette.Connected;
+    public static Rgb Danger => _palette.Danger;
+    public static Rgb InputActiveBackground => Mix(RootBackground, Selection, 0.18);
+    public static OilTTYTheme Theme => _theme;
+
+    public static void UseTheme(OilTTYTheme theme)
+    {
+        _theme = theme;
+        _palette = PaletteFor(theme);
+    }
+
+    public static bool TryToggleTheme(ConsoleKeyInfo key)
+    {
+        if (key.Key != ConsoleKey.T
+            || !key.Modifiers.HasFlag(ConsoleModifiers.Control))
+        {
+            return false;
+        }
+
+        UseTheme(_theme == OilTTYTheme.Dark ? OilTTYTheme.Light : OilTTYTheme.Dark);
+        return true;
+    }
+
+    public static BoardPalette PaletteFor(OilTTYTheme theme) =>
+        theme == OilTTYTheme.Light ? LightPalette : DarkPalette;
 
     public static SurfaceStyle ResolveCard(CardTypeDefinition? cardType)
     {
@@ -71,14 +160,18 @@ internal static class BoardStyles
         ResolveSurface(
             tag.StyleName,
             tag.StylePropertiesJson,
-            new SurfaceStyle(TagAutoBackground, TagAutoBackground, TagAutoText, TagAutoBorder),
+            new SurfaceStyle(
+                _palette.TagAutoBackground,
+                _palette.TagAutoBackground,
+                _palette.TagAutoText,
+                _palette.TagAutoBorder),
             isTag: true);
 
     public static Rgb ResolveSlick(SlickDefinition? slick, int slickId)
     {
         if (slick is null)
         {
-            return Presets[Math.Abs(slickId) % Presets.Length];
+            return PresetAt(slickId);
         }
 
         if (slick.StyleName.Equals("presets", StringComparison.OrdinalIgnoreCase)
@@ -87,7 +180,7 @@ internal static class BoardStyles
             using (presetProperties)
             {
                 var presetIndex = ReadPresetIndex(presetProperties.RootElement);
-                return Mix(Presets[presetIndex], CardBackground, 0.12);
+                return Mix(_palette.Presets[presetIndex], CardBackground, _palette.SlickSurfaceAmount);
             }
         }
 
@@ -104,7 +197,7 @@ internal static class BoardStyles
             }
         }
 
-        return Presets[Math.Abs(slickId) % Presets.Length];
+        return PresetAt(slickId);
     }
 
     public static Rgb Mix(Rgb left, Rgb right, double rightAmount)
@@ -137,10 +230,11 @@ internal static class BoardStyles
             var root = properties.RootElement;
             if (styleName.Equals("presets", StringComparison.OrdinalIgnoreCase))
             {
-                var presetBackground = Presets[ReadPresetIndex(root)];
+                var presetIndex = ReadPresetIndex(root);
+                var presetBackground = _palette.Presets[presetIndex];
                 var presetBorder = isTag
                     ? Mix(presetBackground, BorderSoft, 0.45)
-                    : Mix(presetBackground, MixDark, 0.28);
+                    : PresetCardBorder(presetBackground, presetIndex);
                 return new SurfaceStyle(
                     presetBackground,
                     presetBackground,
@@ -176,13 +270,28 @@ internal static class BoardStyles
             var border = borderMode == "custom"
                          && TryReadColour(root, "borderColor", out var customBorder)
                 ? customBorder
-                : Mix(left, isTag ? TagAutoBorder : BorderSoft, 0.45);
+                : Mix(left, isTag ? _palette.TagAutoBorder : BorderSoft, 0.45);
             return new SurfaceStyle(left, right, foreground, border, showBorder);
         }
     }
 
     private static SurfaceStyle DefaultCard() =>
         new(CardBackground, CardBackground, TextStrong, BorderSoft);
+
+    private static Rgb PresetAt(int id) =>
+        _palette.Presets[Math.Abs(id) % _palette.Presets.Count];
+
+    private static Rgb PresetCardBorder(Rgb background, int presetIndex)
+    {
+        if (_theme == OilTTYTheme.Dark)
+        {
+            return Mix(background, MixDark, 0.28);
+        }
+
+        return presetIndex is 0 or 4 or 11
+            ? Mix(background, MixLight, 0.40)
+            : Mix(background, MixDark, 0.50);
+    }
 
     private static Rgb AutoText(Rgb background)
     {
@@ -195,7 +304,7 @@ internal static class BoardStyles
         if (!root.TryGetProperty("presetIndex", out var element)
             || !element.TryGetInt32(out var index)
             || index < 0
-            || index >= Presets.Length)
+            || index >= _palette.Presets.Count)
         {
             return 2;
         }

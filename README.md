@@ -1,3 +1,5 @@
+![OilTTY for BoardOil logo](OilTTY-logo.png)
+
 # OilTTY
 
 Have you used all of your system memory running a local LLM but still need access to your favourite kanban board?
@@ -8,6 +10,10 @@ Guaranteed smaller memory footprint than Chrome.
 
 ![OilTTY board view](OilTTY-board.png)
 
+Or why should web pages have all the dual theme fun? Light mode, just a ctrl-t away.
+
+![OilTTY board view in light mode](OilTTY-board-light.png)
+
 ## Run
 
 Requires the .NET 10 SDK. Currently only tested on Linux, I know, .NET & Linux, weird right?
@@ -17,8 +23,6 @@ From the repository root:
 ```sh
 dotnet run --project OilTTY
 ```
-
-OilTTY prompts for your BoardOil login on first run and saves the session for later runs.
 
 To log out:
 

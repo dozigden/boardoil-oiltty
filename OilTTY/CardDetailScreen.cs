@@ -166,6 +166,11 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         ConsoleKeyInfo key,
         TerminalViewport viewport)
     {
+        if (BoardStyles.TryToggleTheme(key))
+        {
+            return ScreenUpdate<CardDetailCommand>.Continue();
+        }
+
         if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control))
         {
             return ScreenUpdate<CardDetailCommand>.Complete(CardDetailCommand.Quit);

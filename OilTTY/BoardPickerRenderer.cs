@@ -3,9 +3,6 @@ internal sealed class BoardPickerRenderer
     private const int ListHeadingRow = 8;
     private const int ListStartRow = 9;
 
-    private static readonly Rgb SelectionBackground =
-        BoardStyles.Mix(BoardStyles.RootBackground, BoardStyles.Selection, 0.18);
-
     public TerminalFrame Render(
         IReadOnlyList<BoardSummary> boards,
         int selectedIndex,
@@ -23,6 +20,7 @@ internal sealed class BoardPickerRenderer
 
         var listWidth = Math.Min(width - 4, 72);
         var listX = (width - listWidth) / 2;
+        var selectionBackground = BoardStyles.InputActiveBackground;
         canvas.Put(listX, ListHeadingRow, "BOARDS", BoardStyles.TextStrong, bold: true);
 
         if (boards.Count == 0)
@@ -44,11 +42,11 @@ internal sealed class BoardPickerRenderer
             var selected = index == selectedIndex;
             if (selected)
             {
-                canvas.Fill(listX, row, listWidth, 1, SelectionBackground);
-                canvas.Put(listX, row, "▌", BoardStyles.Selection, SelectionBackground, bold: true);
+                canvas.Fill(listX, row, listWidth, 1, selectionBackground);
+                canvas.Put(listX, row, "▌", BoardStyles.Selection, selectionBackground, bold: true);
             }
 
-            var background = selected ? SelectionBackground : BoardStyles.RootBackground;
+            var background = selected ? selectionBackground : BoardStyles.RootBackground;
             var id = $"#{board.Id}";
             var idWidth = UnicodeDisplay.TextWidth(id);
             canvas.Put(listX + 2, row, id, BoardStyles.TextMuted, background);
@@ -93,5 +91,7 @@ internal sealed class BoardPickerRenderer
         canvas.Put(19, canvas.Height - 1, "open", BoardStyles.TextMuted);
         canvas.Put(26, canvas.Height - 1, "b/esc", BoardStyles.Selection, bold: true);
         canvas.Put(32, canvas.Height - 1, "cancel", BoardStyles.TextMuted);
+        canvas.Put(40, canvas.Height - 1, "ctrl+t", BoardStyles.Selection, bold: true);
+        canvas.Put(47, canvas.Height - 1, "theme", BoardStyles.TextMuted);
     }
 }

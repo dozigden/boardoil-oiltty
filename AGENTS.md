@@ -19,6 +19,7 @@ Read the relevant guidance before working in that area:
 ## Visual requirements
 
 - Use truecolour terminal rendering.
+- Support both dark and light palettes using BoardOil's theme colours; dark remains the default and `Ctrl+T` switches the active theme.
 - Handle graphemes and double-width emoji correctly.
 - Preserve BoardOil card-type and tag colours.
 - Honour BoardOil card-type border modes: omit the normal border for `borderMode: none`, while retaining the selected-card border.

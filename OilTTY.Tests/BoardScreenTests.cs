@@ -91,7 +91,7 @@ public sealed class BoardScreenTests
     {
         var screen = new BoardScreen(Data(TestBoardFactory.Column(1)), "connected");
 
-        var canvas = screen.Render(new TerminalViewport(80, 24)).Canvas;
+        var canvas = screen.Render(new TerminalViewport(120, 24)).Canvas;
         var footer = string.Concat(Enumerable.Range(0, canvas.Width)
             .Select(x => canvas.CellAt(x, canvas.Height - 1))
             .Where(cell => !cell.Continuation)
@@ -99,6 +99,7 @@ public sealed class BoardScreenTests
 
         Assert.Contains("n new", footer);
         Assert.Contains("space move", footer);
+        Assert.Contains("ctrl+t theme", footer);
     }
 
     [Fact]

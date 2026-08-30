@@ -4,17 +4,40 @@ internal sealed record AppOptions(
     bool Once,
     bool NoAlternateScreen,
     bool NoSession,
-    bool Logout)
+    bool Logout,
+    OilTTYTheme Theme,
+    bool ShowHelp)
 {
+    public const string HelpText = """
+        Usage: OilTTY [options]
+
+        Options:
+          --server <url>         BoardOil server URL (BOARDOIL_URL)
+          --board <id>           Initial board ID (BOARDOIL_BOARD_ID)
+          --theme <dark|light>   Colour theme (OILTTY_THEME; default: dark)
+          --logout               Delete the saved session
+          --no-session           Do not load or save a session
+          --no-alt-screen        Do not use the alternate terminal screen
+          --once                 Render once and exit
+          -h, --help             Show this help
+
+        Authentication environment variables:
+          BOARDOIL_API_TOKEN     API token for non-interactive authentication
+          BOARDOIL_USERNAME      Username for non-interactive authentication
+          BOARDOIL_PASSWORD      Password for non-interactive authentication
+        """;
+
     public static AppOptions Parse(string[] arguments)
     {
         var serverValue = Environment.GetEnvironmentVariable("BOARDOIL_URL");
         var boardValue = Environment.GetEnvironmentVariable("BOARDOIL_BOARD_ID");
-        var boardId = int.TryParse(boardValue, out var configuredBoardId) ? configuredBoardId : 1;
+        var boardSource = "BOARDOIL_BOARD_ID";
+        var themeValue = Environment.GetEnvironmentVariable("OILTTY_THEME");
         var once = false;
         var noAlternateScreen = false;
         var noSession = false;
         var logout = false;
+        var showHelp = false;
 
         for (var index = 0; index < arguments.Length; index++)
         {
@@ -25,12 +48,8 @@ internal sealed record AppOptions(
                     serverValue = ReadValue(arguments, ref index, argument);
                     break;
                 case "--board":
-                    var rawBoardId = ReadValue(arguments, ref index, argument);
-                    if (!int.TryParse(rawBoardId, out boardId) || boardId <= 0)
-                    {
-                        throw new ArgumentException("--board must be a positive integer.");
-                    }
-
+                    boardValue = ReadValue(arguments, ref index, argument);
+                    boardSource = argument;
                     break;
                 case "--once":
                     once = true;
@@ -44,18 +63,47 @@ internal sealed record AppOptions(
                 case "--logout":
                     logout = true;
                     break;
+                case "--theme":
+                    themeValue = ReadValue(arguments, ref index, argument);
+                    break;
+                case "-h":
+                case "--help":
+                    showHelp = true;
+                    break;
                 default:
                     throw new ArgumentException($"Unknown argument: {argument}");
             }
         }
 
+        if (showHelp)
+        {
+            return new AppOptions(
+                null,
+                1,
+                false,
+                false,
+                false,
+                false,
+                OilTTYTheme.Dark,
+                true);
+        }
+
         var server = string.IsNullOrWhiteSpace(serverValue) ? null : ParseServer(serverValue);
+        var boardId = ParseBoardId(boardValue, boardSource);
         if (logout && noSession)
         {
             throw new ArgumentException("--logout cannot be combined with --no-session.");
         }
 
-        return new AppOptions(server, boardId, once, noAlternateScreen, noSession, logout);
+        return new AppOptions(
+            server,
+            boardId,
+            once,
+            noAlternateScreen,
+            noSession,
+            logout,
+            ParseTheme(themeValue),
+            false);
     }
 
     private static string ReadValue(string[] arguments, ref int index, string option)
@@ -67,6 +115,21 @@ internal sealed record AppOptions(
         }
 
         return arguments[index];
+    }
+
+    private static int ParseBoardId(string? value, string source)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return 1;
+        }
+
+        if (!int.TryParse(value, out var boardId) || boardId <= 0)
+        {
+            throw new ArgumentException($"{source} must be a positive integer.");
+        }
+
+        return boardId;
     }
 
     internal static Uri ParseServer(string value)
@@ -83,4 +146,12 @@ internal sealed record AppOptions(
         };
         return builder.Uri;
     }
+
+    internal static OilTTYTheme ParseTheme(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "dark" => OilTTYTheme.Dark,
+            "light" => OilTTYTheme.Light,
+            _ => throw new ArgumentException("Theme must be 'light' or 'dark'.")
+        };
 }

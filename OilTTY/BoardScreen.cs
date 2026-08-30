@@ -55,6 +55,11 @@ internal sealed class BoardScreen : ITerminalScreen<BoardCommand>
 
     public ScreenUpdate<BoardCommand> HandleKey(ConsoleKeyInfo key, TerminalViewport viewport)
     {
+        if (BoardStyles.TryToggleTheme(key))
+        {
+            return ScreenUpdate<BoardCommand>.Continue();
+        }
+
         if (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control)
             || key.Key == ConsoleKey.Q)
         {

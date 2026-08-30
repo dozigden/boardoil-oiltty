@@ -30,6 +30,11 @@ internal sealed class BoardPickerScreen : ITerminalScreen<BoardPickerResult>
 
     public ScreenUpdate<BoardPickerResult> HandleKey(ConsoleKeyInfo key, TerminalViewport viewport)
     {
+        if (BoardStyles.TryToggleTheme(key))
+        {
+            return ScreenUpdate<BoardPickerResult>.Continue();
+        }
+
         if (key.Key is ConsoleKey.Escape or ConsoleKey.B or ConsoleKey.Q)
         {
             return ScreenUpdate<BoardPickerResult>.Complete(new BoardPickerResult(null));

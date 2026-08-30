@@ -153,6 +153,11 @@ internal sealed class LoginApplication(Uri? initialServer, TerminalRuntime termi
 
     public ScreenUpdate<LoginCredentials> HandleKey(ConsoleKeyInfo key, TerminalViewport viewport)
     {
+        if (BoardStyles.TryToggleTheme(key))
+        {
+            return ScreenUpdate<LoginCredentials>.Continue();
+        }
+
         if (key.Key == ConsoleKey.Escape
             || (key.Key == ConsoleKey.C && key.Modifiers.HasFlag(ConsoleModifiers.Control)))
         {
@@ -259,6 +264,8 @@ internal sealed class LoginApplication(Uri? initialServer, TerminalRuntime termi
         canvas.Put(19, canvas.Height - 1, "sign in", BoardStyles.TextMuted);
         canvas.Put(28, canvas.Height - 1, "esc", BoardStyles.Selection, bold: true);
         canvas.Put(32, canvas.Height - 1, "quit", BoardStyles.TextMuted);
+        canvas.Put(40, canvas.Height - 1, "ctrl+t", BoardStyles.Selection, bold: true);
+        canvas.Put(47, canvas.Height - 1, "theme", BoardStyles.TextMuted);
     }
 
     private static void DrawField(

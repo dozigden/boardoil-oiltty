@@ -31,7 +31,8 @@ internal static class BoardChromeRenderer
                 (Keys: "n", Label: "new"),
                 (Keys: "b", Label: "board"),
                 (Keys: "r", Label: "reload"),
-                (Keys: "q", Label: "quit")
+                (Keys: "q", Label: "quit"),
+                (Keys: "ctrl+t", Label: "theme")
             };
         DrawFooter(canvas, footerItems, BoardStyles.Selection);
     }

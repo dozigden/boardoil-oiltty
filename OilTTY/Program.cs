@@ -5,6 +5,13 @@ Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false
 try
 {
     var options = AppOptions.Parse(args);
+    if (options.ShowHelp)
+    {
+        Console.WriteLine(AppOptions.HelpText);
+        return 0;
+    }
+
+    BoardStyles.UseTheme(options.Theme);
     var serverStore = new ServerStore();
     options = options with { Server = options.Server ?? await serverStore.LoadAsync() };
     if (options.Logout)
