@@ -18,7 +18,7 @@ internal static class BoardOilBranding
             canvas.Put((canvas.Width - rowWidth) / 2, LogoStartRow + index, row);
         }
 
-        const string wordmark = "BoardOil";
+        const string wordmark = "OilTTY for BoardOil";
         var wordmarkWidth = UnicodeDisplay.TextWidth(wordmark);
         canvas.Put(
             (canvas.Width - wordmarkWidth) / 2,

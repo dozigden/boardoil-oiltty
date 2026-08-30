@@ -32,7 +32,7 @@ Read the relevant guidance before working in that area:
 - Use a global board canvas with two vertical subcells per terminal row.
 - Show overflow with a muted-lavender right-half scrollbar thumb on the column divider, rendered above slicks.
 - Do not draw an outer window border; give the reclaimed edge cells and rows to board content.
-- Centre a terminal-native 3×3 emoji interpretation of the BoardOil mosaic above a bold `BoardOil` wordmark and the board picker list, retaining the mosaic's empty bottom-middle cell.
+- Centre a terminal-native 3×3 emoji interpretation of the BoardOil mosaic above a bold `OilTTY for BoardOil` wordmark and the board picker list, retaining the mosaic's empty bottom-middle cell.
 - Kitty profile images may be explored later.
 
 ## Technology
