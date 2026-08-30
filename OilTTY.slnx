@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="OilTTY/OilTTY.csproj" />
+  <Project Path="OilTTY.Tests/OilTTY.Tests.csproj" />
+</Solution>

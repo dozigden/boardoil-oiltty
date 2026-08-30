@@ -1,0 +1,7 @@
+# Build output
+**/bin/
+**/obj/
+
+# Local Codex connection state
+.codex/
+
