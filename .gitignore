@@ -2,6 +2,31 @@
 **/bin/
 **/obj/
 /publish/
+/artifacts/
+
+# Local IDE state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+.envrc
+
+# Test and coverage output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
 
 # Local Codex connection state
 .codex/
