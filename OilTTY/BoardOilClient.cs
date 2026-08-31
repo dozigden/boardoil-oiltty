@@ -303,6 +303,30 @@ internal sealed class BoardOilClient : IAsyncDisposable
             },
             cancellationToken);
 
+    public Task<IReadOnlyList<CardComment>> LoadCardCommentsAsync(
+        int boardId,
+        int cardId,
+        CancellationToken cancellationToken = default) =>
+        _transport.GetAsync<IReadOnlyList<CardComment>>(
+            $"api/boards/{boardId}/cards/{cardId}/comments",
+            cancellationToken);
+
+    public Task<CardComment> CreateCardCommentAsync(
+        int boardId,
+        int cardId,
+        string text,
+        CancellationToken cancellationToken = default) =>
+        _transport.SendAsync<CardComment>(
+            () => new HttpRequestMessage(
+                HttpMethod.Post,
+                $"api/boards/{boardId}/cards/{cardId}/comments")
+            {
+                Content = JsonContent.Create(
+                    new CreateCardCommentRequest(text),
+                    options: JsonOptions)
+            },
+            cancellationToken);
+
     public ValueTask DisposeAsync() => _transport.DisposeAsync();
 
     private static HttpClient CreateHttpClient(Uri server)

@@ -358,6 +358,201 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
+    public void CommentsTab_LoadsOnFirstVisitAndKeepsDetailsVisible()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(100, 24);
+
+        var load = screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        var loading = PlainText(screen.Render(viewport).Canvas);
+
+        Assert.True(load.IsComplete);
+        Assert.Equal(CardDetailCommand.LoadComments, load.Result);
+        Assert.Equal(CardDetailField.Comments, screen.FocusedField);
+        Assert.Equal(CardDetailMainTab.Comments, screen.MainTab);
+        Assert.Contains("COMMENTS", loading);
+        Assert.Contains("Loading comments", loading);
+        Assert.Contains("DETAILS", loading);
+
+        screen.ApplyComments([]);
+        var empty = PlainText(screen.Render(viewport).Canvas);
+
+        Assert.Contains("No comments yet", empty);
+    }
+
+    [Fact]
+    public void CommentsTab_RendersNewestFirstWithAuthorFallbackAndWrappedText()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.ApplyComments(
+        [
+            new CardComment(1, card.Id, null, "Older comment", new DateTime(2026, 8, 30, 8, 0, 0, DateTimeKind.Utc), null, null),
+            new CardComment(2, card.Id, 7, "Newer comment with emoji 👩🏽‍💻", new DateTime(2026, 8, 31, 8, 0, 0, DateTimeKind.Utc), "Luke", null)
+        ]);
+
+        var rendered = PlainText(screen.Render(viewport).Canvas);
+
+        Assert.Contains("👤 Luke", rendered);
+        Assert.Contains("Unknown user", rendered);
+        Assert.Contains("Newer comment with emoji 👩🏽‍💻", rendered);
+        Assert.True(rendered.IndexOf("Newer comment", StringComparison.Ordinal)
+            < rendered.IndexOf("Older comment", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CommentEdit_FirstEscapePreservesDraftAndSecondOffersDiscardConfirmation()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.ApplyComments([]);
+        screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+        screen.HandleKey(Key(ConsoleKey.X, 'X'), viewport);
+
+        var finishEditing = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        var visibleDraft = PlainText(screen.Render(viewport).Canvas);
+        var warning = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+
+        Assert.False(finishEditing.IsComplete);
+        Assert.False(screen.IsEditing);
+        Assert.Equal("X", screen.PendingCommentText);
+        Assert.True(screen.HasUnsavedChanges);
+        Assert.Contains("COMMENT DRAFT · ENTER TO EDIT", visibleDraft);
+        Assert.Contains("X", visibleDraft);
+        Assert.False(warning.IsComplete);
+        Assert.True(screen.IsConfirmingDiscard);
+        Assert.Contains("Discard changes?", PlainText(screen.Render(viewport).Canvas));
+    }
+
+    [Fact]
+    public void CommentSave_IncludesCardDraftAndClearsOnlyCommentDraftOnPostSuccess()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+        screen.HandleKey(Key(ConsoleKey.X, 'X'), viewport);
+        screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.ApplyComments([]);
+        screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+        foreach (var character in "hello")
+        {
+            screen.HandleKey(Key(ConsoleKey.H, character), viewport);
+        }
+
+        var post = screen.HandleKey(Key(ConsoleKey.S, 's', control: true), viewport);
+        var cardDraft = Assert.IsType<CardDraft>(screen.PendingDraft);
+
+        Assert.True(post.IsComplete);
+        Assert.Equal(CardDetailCommand.Save, post.Result);
+        Assert.Equal("hello", screen.PendingCommentText);
+        Assert.StartsWith("X", cardDraft.Description);
+
+        var postedAt = card.CardUpdatedUtc.AddMinutes(2);
+        var updatedCard = card with { CardUpdatedUtc = postedAt };
+        var comment = new CardComment(3, card.Id, 7, "hello", postedAt, "Luke", null);
+        screen.ApplyPostedComment(data, updatedCard, comment);
+
+        Assert.Null(screen.PendingCommentText);
+        Assert.Same(cardDraft, screen.PendingDraft);
+        Assert.Equal(comment, Assert.Single(screen.Comments!));
+        Assert.True(screen.HasUnsavedChanges);
+        Assert.Contains("Comment posted.", PlainText(screen.Render(viewport).Canvas));
+    }
+
+    [Fact]
+    public void NewCard_HidesCommentsTabAndRightArrowContinuesToDetails()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, CardDraft.From(card), "connected");
+        var viewport = new TerminalViewport(80, 24);
+        screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        screen.HandleKey(Key(ConsoleKey.DownArrow), viewport);
+        var move = screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        var rendered = PlainText(screen.Render(viewport).Canvas);
+
+        Assert.False(move.IsComplete);
+        Assert.Equal(CardDetailField.Tags, screen.FocusedField);
+        Assert.DoesNotContain("COMMENTS", rendered);
+    }
+
+    [Fact]
+    public void CommentsLoadError_RemainsInCardAndEnterRetries()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.SetCommentsLoadError(new InvalidOperationException("Comments are unavailable."));
+
+        var failed = PlainText(screen.Render(viewport).Canvas);
+        var retry = screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+
+        Assert.Contains("Could not load comments", failed);
+        Assert.Contains("Comments are unavailable.", failed);
+        Assert.True(retry.IsComplete);
+        Assert.Equal(CardDetailCommand.LoadComments, retry.Result);
+    }
+
+    [Fact]
+    public void OutstandingCommentDraft_CtrlSFromDetailsRequestsACommentPost()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.ApplyComments([]);
+        screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+        screen.HandleKey(Key(ConsoleKey.X, 'X'), viewport);
+        screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+
+        var save = screen.HandleKey(Key(ConsoleKey.S, 's', control: true), viewport);
+
+        Assert.True(save.IsComplete);
+        Assert.Equal(CardDetailCommand.PostComment, save.Result);
+        Assert.Equal("X", screen.PendingCommentText);
+        Assert.Null(screen.PendingDraft);
+    }
+
+    [Fact]
+    public void CommentsAndDetails_PreserveIndependentScrollPositions()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(60, 14);
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.ApplyComments(Enumerable.Range(1, 20)
+            .Select(index => new CardComment(
+                index,
+                card.Id,
+                null,
+                $"Comment {index}",
+                DateTime.UnixEpoch.AddMinutes(index),
+                "Luke",
+                null))
+            .ToArray());
+        screen.HandleKey(Key(ConsoleKey.End), viewport);
+        var commentScroll = screen.CommentsScroll;
+        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
+        screen.HandleKey(Key(ConsoleKey.End), viewport);
+        var optionsScroll = screen.OptionsScroll;
+        screen.HandleKey(Key(ConsoleKey.LeftArrow), viewport);
+
+        Assert.True(commentScroll > 0);
+        Assert.True(optionsScroll > 0);
+        Assert.Equal(commentScroll, screen.CommentsScroll);
+        Assert.Equal(CardDetailField.Comments, screen.FocusedField);
+        Assert.Equal(CardDetailMainTab.Comments, screen.MainTab);
+    }
+
+    [Fact]
     public void DescriptionEdit_FirstEscapeFinishesEditingAndSecondOffersDiscardConfirmation()
     {
         var (data, card) = DetailData();

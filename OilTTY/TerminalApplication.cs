@@ -178,24 +178,78 @@ internal sealed class TerminalApplication(
                 return true;
             }
 
-            var draft = detailScreen.PendingDraft;
-            if (draft is null)
+            if (command == CardDetailCommand.LoadComments)
             {
+                detailScreen.BeginLoadingComments();
+                _terminal.Draw(detailScreen.Render(_terminal.CurrentViewport));
+                try
+                {
+                    var comments = await _client.LoadCardCommentsAsync(boardId, selectedCard.Id);
+                    detailScreen.ApplyComments(comments);
+                }
+                catch (Exception exception)
+                {
+                    detailScreen.SetCommentsLoadError(exception);
+                }
+
                 continue;
             }
 
-            detailScreen.BeginSaving();
-            _terminal.Draw(detailScreen.Render(_terminal.CurrentViewport));
-            try
+            if (command is CardDetailCommand.Save or CardDetailCommand.PostComment)
             {
-                var updatedCard = await _client.UpdateCardAsync(boardId, selectedCard.Id, draft);
-                boardScreen.ReplaceCard(updatedCard);
-                detailScreen.ApplySaved(boardScreen.Data, updatedCard);
-                selectedCard = updatedCard;
-            }
-            catch (Exception exception)
-            {
-                detailScreen.SetSaveError(exception);
+                var draft = detailScreen.PendingDraft;
+                var text = detailScreen.PendingCommentText;
+                if (draft is null && string.IsNullOrWhiteSpace(text))
+                {
+                    continue;
+                }
+
+                if (draft is not null)
+                {
+                    detailScreen.BeginSaving();
+                    _terminal.Draw(detailScreen.Render(_terminal.CurrentViewport));
+                    try
+                    {
+                        var updatedCard = await _client.UpdateCardAsync(
+                            boardId,
+                            selectedCard.Id,
+                            draft);
+                        boardScreen.ReplaceCard(updatedCard);
+                        detailScreen.ApplySaved(boardScreen.Data, updatedCard);
+                        selectedCard = updatedCard;
+                    }
+                    catch (Exception exception)
+                    {
+                        detailScreen.SetSaveError(exception);
+                        continue;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    detailScreen.BeginPostingComment();
+                    _terminal.Draw(detailScreen.Render(_terminal.CurrentViewport));
+                    try
+                    {
+                        var comment = await _client.CreateCardCommentAsync(
+                            boardId,
+                            selectedCard.Id,
+                            text);
+                        var updatedCard = selectedCard with
+                        {
+                            CardUpdatedUtc = comment.PostedAtUtc
+                        };
+                        boardScreen.ReplaceCard(updatedCard);
+                        detailScreen.ApplyPostedComment(boardScreen.Data, updatedCard, comment);
+                        selectedCard = updatedCard;
+                    }
+                    catch (Exception exception)
+                    {
+                        detailScreen.SetCommentPostError(exception);
+                    }
+                }
+
+                continue;
             }
         }
     }

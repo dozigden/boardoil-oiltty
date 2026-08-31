@@ -4,10 +4,17 @@ internal enum CardDetailPane
     Options
 }
 
+internal enum CardDetailMainTab
+{
+    Description,
+    Comments
+}
+
 internal enum CardDetailField
 {
     Title,
     Description,
+    Comments,
     Tags,
     BoardColumn,
     CardType,
@@ -24,7 +31,9 @@ internal enum CardDetailCommand
 {
     Close,
     Quit,
-    Save
+    Save,
+    LoadComments,
+    PostComment
 }
 
 internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
@@ -49,10 +58,12 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     private BoardData _data;
     private BoardCard _card;
     private CardDetailPane _activePane = CardDetailPane.Description;
+    private CardDetailMainTab _mainTab = CardDetailMainTab.Description;
     private CardDetailField _focusedField = CardDetailField.Description;
     private CardDetailField? _editingField;
     private CardDraft? _draft;
     private int _descriptionScroll;
+    private int _commentsScroll;
     private int _optionsScroll;
     private bool _ensureFocusedFieldVisible;
     private MultilineTextEditor? _editor;
@@ -64,6 +75,10 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     private string? _feedback;
     private bool _feedbackIsError;
     private bool _confirmingDiscard;
+    private IReadOnlyList<CardComment>? _comments;
+    private bool _commentsLoading;
+    private bool _commentsLoadFailed;
+    private string? _commentDraft;
 
     public CardDetailScreen(BoardData data, BoardCard card, string status)
     {
@@ -94,7 +109,11 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
     public int OptionsScroll => _optionsScroll;
 
+    public int CommentsScroll => _commentsScroll;
+
     public CardDetailPane ActivePane => _activePane;
+
+    public CardDetailMainTab MainTab => _mainTab;
 
     public CardDetailField FocusedField => _focusedField;
 
@@ -108,7 +127,7 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
     public bool IsConfirmingDiscard => _confirmingDiscard;
 
-    public bool HasUnsavedChanges => HasDirtyDraft();
+    public bool HasUnsavedChanges => HasDirtyDraft() || HasDirtyCommentDraft();
 
     public string Title => _draft?.Title ?? _card.Title;
 
@@ -136,6 +155,10 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
     public CardDraft? PendingDraft => _draft;
 
+    public string? PendingCommentText => _commentDraft;
+
+    public IReadOnlyList<CardComment>? Comments => _comments;
+
     public TerminalFrame Render(TerminalViewport viewport)
     {
         var displayCard = CreateDisplayCard();
@@ -145,6 +168,8 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             displayCard,
             layout,
             _activePane,
+            _mainTab,
+            _comments?.Count,
             _focusedField,
             _editingField,
             _tagPicker,
@@ -152,10 +177,11 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             _cardTypePicker,
             _assigneePicker,
             _slickPicker,
-            _draft is not null,
+            HasUnsavedChanges,
             _isNew,
             _confirmingDiscard,
             EffectiveDescriptionScroll(layout),
+            EffectiveCommentsScroll(layout),
             EffectiveOptionsScroll(layout),
             _status,
             _feedback,
@@ -203,17 +229,25 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
         if (key.Key == ConsoleKey.S && key.Modifiers.HasFlag(ConsoleModifiers.Control))
         {
-            return RequestSave();
+            return _focusedField == CardDetailField.Comments && HasDirtyCommentDraft()
+                ? RequestPostComment(viewport)
+                : RequestSave(viewport);
         }
 
         if (key.Key == ConsoleKey.Tab)
         {
             MoveFocus(key.Modifiers.HasFlag(ConsoleModifiers.Shift) ? -1 : 1);
-            return ScreenUpdate<CardDetailCommand>.Continue();
+            return ContinueOrLoadComments();
         }
 
         if (key.Key == ConsoleKey.LeftArrow)
         {
+            if (_focusedField == CardDetailField.Comments)
+            {
+                Focus(CardDetailField.Description);
+                return ScreenUpdate<CardDetailCommand>.Continue();
+            }
+
             if (_focusedField is CardDetailField.Tags
                 or CardDetailField.BoardColumn
                 or CardDetailField.CardType
@@ -221,36 +255,67 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
                 or CardDetailField.Slick
                 or CardDetailField.ExternalUrl)
             {
-                Focus(CardDetailField.Description);
+                Focus(_mainTab == CardDetailMainTab.Comments
+                    ? CardDetailField.Comments
+                    : CardDetailField.Description);
             }
             else
             {
                 MoveFocus(-1, wrap: false);
             }
 
-            return ScreenUpdate<CardDetailCommand>.Continue();
+            return ContinueOrLoadComments();
         }
 
         if (key.Key == ConsoleKey.RightArrow)
         {
+            if (!_isNew && _focusedField == CardDetailField.Description)
+            {
+                Focus(CardDetailField.Comments);
+                return ContinueOrLoadComments();
+            }
+
+            if (_focusedField == CardDetailField.Comments)
+            {
+                Focus(CardDetailField.Tags);
+                return ScreenUpdate<CardDetailCommand>.Continue();
+            }
+
             MoveFocus(1, wrap: false);
-            return ScreenUpdate<CardDetailCommand>.Continue();
+            return ContinueOrLoadComments();
         }
 
         if (key.Key == ConsoleKey.UpArrow)
         {
+            if (_focusedField == CardDetailField.Comments)
+            {
+                Focus(CardDetailField.Title);
+                return ScreenUpdate<CardDetailCommand>.Continue();
+            }
+
             MoveFocus(-1, wrap: false);
-            return ScreenUpdate<CardDetailCommand>.Continue();
+            return ContinueOrLoadComments();
         }
 
         if (key.Key == ConsoleKey.DownArrow)
         {
+            if (_focusedField == CardDetailField.Comments)
+            {
+                Focus(CardDetailField.Tags);
+                return ScreenUpdate<CardDetailCommand>.Continue();
+            }
+
             MoveFocus(1, wrap: false);
-            return ScreenUpdate<CardDetailCommand>.Continue();
+            return ContinueOrLoadComments();
         }
 
         if (key.Key == ConsoleKey.Enter)
         {
+            if (_focusedField == CardDetailField.Comments && _comments is null)
+            {
+                return RequestCommentsLoad();
+            }
+
             BeginEditingFocusedField(viewport);
             return ScreenUpdate<CardDetailCommand>.Continue();
         }
@@ -311,6 +376,65 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         }
     }
 
+    public void BeginLoadingComments()
+    {
+        _commentsLoading = true;
+        _commentsLoadFailed = false;
+        _feedback = "Loading comments…";
+        _feedbackIsError = false;
+    }
+
+    public void ApplyComments(IReadOnlyList<CardComment> comments)
+    {
+        _comments = comments
+            .OrderByDescending(comment => comment.PostedAtUtc)
+            .ThenByDescending(comment => comment.Id)
+            .ToArray();
+        _commentsLoading = false;
+        _commentsLoadFailed = false;
+        _feedback = null;
+        _feedbackIsError = false;
+    }
+
+    public void SetCommentsLoadError(Exception exception)
+    {
+        _commentsLoading = false;
+        _commentsLoadFailed = true;
+        _feedback = exception.Message;
+        _feedbackIsError = true;
+    }
+
+    public void BeginPostingComment()
+    {
+        _feedback = "Posting comment…";
+        _feedbackIsError = false;
+    }
+
+    public void ApplyPostedComment(BoardData data, BoardCard card, CardComment comment)
+    {
+        _data = data;
+        _card = card;
+        _comments = (_comments ?? [])
+            .Where(existing => existing.Id != comment.Id)
+            .Append(comment)
+            .OrderByDescending(existing => existing.PostedAtUtc)
+            .ThenByDescending(existing => existing.Id)
+            .ToArray();
+        _commentDraft = null;
+        _editor = null;
+        _editingField = null;
+        _feedback = "Comment posted.";
+        _feedbackIsError = false;
+        _commentsScroll = 0;
+    }
+
+    public void SetCommentPostError(Exception exception)
+    {
+        _feedback = ResolveCommentErrorMessage(exception);
+        _feedbackIsError = true;
+        Focus(CardDetailField.Comments);
+    }
+
     private ScreenUpdate<CardDetailCommand> HandleEditorKey(
         ConsoleKeyInfo key,
         TerminalViewport viewport)
@@ -323,17 +447,20 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
         if (key.Key == ConsoleKey.S && key.Modifiers.HasFlag(ConsoleModifiers.Control))
         {
-            return RequestSave();
+            return _editingField == CardDetailField.Comments
+                ? RequestPostComment(viewport)
+                : RequestSave(viewport);
         }
 
         if (key.Key == ConsoleKey.Tab)
         {
             CommitEditor();
             MoveFocus(key.Modifiers.HasFlag(ConsoleModifiers.Shift) ? -1 : 1);
-            return ScreenUpdate<CardDetailCommand>.Continue();
+            return ContinueOrLoadComments();
         }
 
-        if (key.Key == ConsoleKey.Enter && _editingField != CardDetailField.Description)
+        if (key.Key == ConsoleKey.Enter
+            && _editingField is not (CardDetailField.Description or CardDetailField.Comments))
         {
             CommitEditor();
             return ScreenUpdate<CardDetailCommand>.Continue();
@@ -341,7 +468,7 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
         var layout = CreateLayout(CreateDisplayCard(), viewport);
         var handled = false;
-        if (_editingField == CardDetailField.Description
+        if (_editingField is CardDetailField.Description or CardDetailField.Comments
             && key.Key is ConsoleKey.PageDown or ConsoleKey.PageUp)
         {
             var directionKey = key.Key == ConsoleKey.PageDown ? ConsoleKey.DownArrow : ConsoleKey.UpArrow;
@@ -365,6 +492,7 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         _feedback = null;
         layout = CreateLayout(CreateDisplayCard(), viewport);
         _descriptionScroll = EffectiveDescriptionScroll(layout);
+        _commentsScroll = EffectiveCommentsScroll(layout);
         _optionsScroll = EffectiveOptionsScroll(layout);
         return ScreenUpdate<CardDetailCommand>.Continue();
     }
@@ -381,7 +509,7 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
         if (key.Key == ConsoleKey.S && key.Modifiers.HasFlag(ConsoleModifiers.Control))
         {
-            return RequestSave();
+            return RequestSave(viewport);
         }
 
         if (key.Key == ConsoleKey.Tab)
@@ -435,13 +563,15 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         return ScreenUpdate<CardDetailCommand>.Continue();
     }
 
-    private ScreenUpdate<CardDetailCommand> RequestSave()
+    private ScreenUpdate<CardDetailCommand> RequestSave(TerminalViewport viewport)
     {
         AcceptChoicePicker();
         CommitEditor();
         if (_draft is null)
         {
-            return ScreenUpdate<CardDetailCommand>.Continue(redraw: false);
+            return HasDirtyCommentDraft()
+                ? RequestPostComment(viewport)
+                : ScreenUpdate<CardDetailCommand>.Continue(redraw: false);
         }
 
         var title = _draft.Title.Trim();
@@ -507,12 +637,77 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         }
 
         _draft = _draft with { Title = title, ExternalUrl = externalUrl };
+        if (HasDirtyCommentDraft() && !TryPrepareCommentDraft(viewport))
+        {
+            return ScreenUpdate<CardDetailCommand>.Continue();
+        }
+
         return ScreenUpdate<CardDetailCommand>.Complete(CardDetailCommand.Save);
     }
 
+    private ScreenUpdate<CardDetailCommand> RequestPostComment(TerminalViewport viewport)
+    {
+        CommitEditor();
+        if (!TryPrepareCommentDraft(viewport))
+        {
+            return ScreenUpdate<CardDetailCommand>.Continue();
+        }
+
+        if (_draft is not null)
+        {
+            return RequestSave(viewport);
+        }
+
+        return ScreenUpdate<CardDetailCommand>.Complete(CardDetailCommand.PostComment);
+    }
+
+    private bool TryPrepareCommentDraft(TerminalViewport viewport)
+    {
+        var text = _commentDraft?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            Focus(CardDetailField.Comments);
+            BeginEditingFocusedField(viewport);
+            _feedback = "Comment text is required.";
+            _feedbackIsError = true;
+            return false;
+        }
+
+        if (text.Length > 4000)
+        {
+            Focus(CardDetailField.Comments);
+            BeginEditingFocusedField(viewport);
+            _feedback = "Comment must be 4,000 characters or fewer.";
+            _feedbackIsError = true;
+            return false;
+        }
+
+        _commentDraft = text;
+        return true;
+    }
+
+    private ScreenUpdate<CardDetailCommand> RequestCommentsLoad()
+    {
+        if (_isNew || _commentsLoading || _comments is not null)
+        {
+            return ScreenUpdate<CardDetailCommand>.Continue();
+        }
+
+        _commentsLoading = true;
+        _commentsLoadFailed = false;
+        _feedback = "Loading comments…";
+        _feedbackIsError = false;
+        return ScreenUpdate<CardDetailCommand>.Complete(CardDetailCommand.LoadComments);
+    }
+
+    private ScreenUpdate<CardDetailCommand> ContinueOrLoadComments() =>
+        _focusedField == CardDetailField.Comments
+            ? RequestCommentsLoad()
+            : ScreenUpdate<CardDetailCommand>.Continue();
+
     private ScreenUpdate<CardDetailCommand> DiscardOrClose()
     {
-        if (!HasDirtyDraft())
+        if (!HasDirtyDraft() && !HasDirtyCommentDraft())
         {
             return ScreenUpdate<CardDetailCommand>.Complete(CardDetailCommand.Close);
         }
@@ -567,6 +762,26 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         if (_focusedField == CardDetailField.Slick)
         {
             BeginSlickPicker();
+            return;
+        }
+
+        if (_focusedField == CardDetailField.Comments)
+        {
+            if (_comments is null)
+            {
+                _editingField = null;
+                return;
+            }
+
+            _editor = new MultilineTextEditor(
+                _commentDraft ?? string.Empty,
+                maximumLength: 4000,
+                cursorAtEnd: true);
+            var commentLayout = CreateLayout(CreateDisplayCard(), viewport);
+            _commentsScroll = Math.Clamp(
+                _commentsScroll,
+                0,
+                commentLayout.CommentsMaxScroll);
             return;
         }
 
@@ -770,14 +985,30 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             return;
         }
 
+        var wasComment = _editingField == CardDetailField.Comments;
         UpdateDraftFromEditor();
         _editor = null;
         _editingField = null;
+        if (wasComment)
+        {
+            _commentsScroll = 0;
+        }
     }
 
     private void UpdateDraftFromEditor()
     {
-        if (_draft is null || _editor is null || _editingField is not CardDetailField field)
+        if (_editor is null || _editingField is not CardDetailField field)
+        {
+            return;
+        }
+
+        if (field == CardDetailField.Comments)
+        {
+            _commentDraft = _editor.Text;
+            return;
+        }
+
+        if (_draft is null)
         {
             return;
         }
@@ -793,6 +1024,12 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
     private void MoveFocus(int delta, bool wrap = true)
     {
+        if (_focusedField == CardDetailField.Comments)
+        {
+            Focus(delta < 0 ? CardDetailField.Description : CardDetailField.Tags);
+            return;
+        }
+
         var index = Array.IndexOf(FocusOrder, _focusedField);
         index = wrap
             ? (index + delta + FocusOrder.Length) % FocusOrder.Length
@@ -804,9 +1041,12 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     {
         _focusedField = field;
         _ensureFocusedFieldVisible = true;
-        if (field == CardDetailField.Description)
+        if (field is CardDetailField.Description or CardDetailField.Comments)
         {
             _activePane = CardDetailPane.Description;
+            _mainTab = field == CardDetailField.Comments
+                ? CardDetailMainTab.Comments
+                : CardDetailMainTab.Description;
         }
         else if (field is CardDetailField.Tags
             or CardDetailField.BoardColumn
@@ -830,7 +1070,14 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
         if (_activePane == CardDetailPane.Description)
         {
-            _descriptionScroll = value;
+            if (_mainTab == CardDetailMainTab.Comments)
+            {
+                _commentsScroll = value;
+            }
+            else
+            {
+                _descriptionScroll = value;
+            }
         }
         else
         {
@@ -850,6 +1097,23 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         }
 
         return ScrollToInclude(scroll, cursorRow, cursorRow, layout.PaneViewportRows, layout.DescriptionMaxScroll);
+    }
+
+    private int EffectiveCommentsScroll(CardDetailLayout layout)
+    {
+        var scroll = Math.Clamp(_commentsScroll, 0, layout.CommentsMaxScroll);
+        if (_editingField != CardDetailField.Comments
+            || layout.CommentCursorRow is not int cursorRow)
+        {
+            return scroll;
+        }
+
+        return ScrollToInclude(
+            scroll,
+            cursorRow,
+            cursorRow,
+            layout.PaneViewportRows,
+            layout.CommentsMaxScroll);
     }
 
     private int EffectiveOptionsScroll(CardDetailLayout layout)
@@ -904,12 +1168,18 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     }
 
     private int ActiveScroll() =>
-        _activePane == CardDetailPane.Description ? _descriptionScroll : _optionsScroll;
+        _activePane == CardDetailPane.Options
+            ? _optionsScroll
+            : _mainTab == CardDetailMainTab.Comments
+                ? _commentsScroll
+                : _descriptionScroll;
 
     private int ActiveMaximumScroll(CardDetailLayout layout) =>
-        _activePane == CardDetailPane.Description
-            ? layout.DescriptionMaxScroll
-            : layout.OptionsMaxScroll;
+        _activePane == CardDetailPane.Options
+            ? layout.OptionsMaxScroll
+            : _mainTab == CardDetailMainTab.Comments
+                ? layout.CommentsMaxScroll
+                : layout.DescriptionMaxScroll;
 
     private int EditorDisplayWidth(CardDetailLayout layout) =>
         _editingField switch
@@ -927,7 +1197,11 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             viewport.Height,
             _editingField,
             _editor,
-            showTimestamps: !_isNew);
+            showTimestamps: !_isNew,
+            comments: _comments,
+            commentDraft: _commentDraft,
+            commentsLoading: _commentsLoading,
+            commentsLoadFailed: _commentsLoadFailed);
 
     private static BoardCard CreateNewCardPreview(BoardData data, CardDraft draft)
     {
@@ -963,6 +1237,9 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         var baseline = _isNew ? _initialDraft! : CardDraft.From(_card);
         return !DraftValuesEqual(_draft, baseline);
     }
+
+    private bool HasDirtyCommentDraft() =>
+        !string.IsNullOrEmpty(_commentDraft);
 
     private static bool DraftValuesEqual(CardDraft left, CardDraft right) =>
         string.Equals(left.Title, right.Title, StringComparison.Ordinal)
@@ -1076,6 +1353,23 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             {
                 field = candidate.Field;
                 return string.Join(" ", errors);
+            }
+        }
+
+        return exception.Message;
+    }
+
+    private static string ResolveCommentErrorMessage(Exception exception)
+    {
+        if (exception is BoardOilRequestException requestException)
+        {
+            foreach (var name in new[] { "text", "comment", "commentText" })
+            {
+                if (requestException.ValidationErrors.TryGetValue(name, out var errors)
+                    && errors.Length > 0)
+                {
+                    return string.Join(" ", errors);
+                }
             }
         }
 

@@ -76,6 +76,17 @@ internal sealed record BoardCard(
     string? SlickName,
     string? ExternalUrl);
 
+internal sealed record CardComment(
+    int Id,
+    int CardId,
+    int? AuthorUserId,
+    string Text,
+    DateTime PostedAtUtc,
+    string? AuthorDisplayName,
+    string? AuthorImageRelativePath);
+
+internal sealed record CreateCardCommentRequest(string Text);
+
 internal sealed record CardMove(
     int CardId,
     int BoardColumnId,

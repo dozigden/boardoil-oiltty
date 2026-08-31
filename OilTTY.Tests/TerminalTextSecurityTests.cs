@@ -52,9 +52,23 @@ public sealed class TerminalTextSecurityTests
         var boardText = PlainText(new BoardScreen(data, "Error\u009dText")
             .Render(Viewport)
             .Canvas);
-        var detailText = PlainText(new CardDetailScreen(data, card, "Error\u009dText")
-            .Render(Viewport)
-            .Canvas);
+        var detailScreen = new CardDetailScreen(data, card, "Error\u009dText");
+        var detailText = PlainText(detailScreen.Render(Viewport).Canvas);
+        detailScreen.HandleKey(
+            new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, shift: false, alt: false, control: false),
+            Viewport);
+        detailScreen.ApplyComments(
+        [
+            new CardComment(
+                1,
+                card.Id,
+                7,
+                "Comment\u001b]52;c;payload\u0007Text",
+                DateTime.UnixEpoch,
+                "Author\rName",
+                null)
+        ]);
+        var commentText = PlainText(detailScreen.Render(Viewport).Canvas);
 
         Assert.Contains("Board�Name", boardText);
         Assert.Contains("COLUMN�NAME", boardText);
@@ -66,8 +80,11 @@ public sealed class TerminalTextSecurityTests
         Assert.Contains("Member�Name", detailText);
         Assert.Contains("Slick�Name", detailText);
         Assert.Contains("Error�Text", boardText);
+        Assert.Contains("Author�Name", commentText);
+        Assert.Contains("Comment�]52;c;payload�Text", commentText);
         AssertNoControls(boardText);
         AssertNoControls(detailText);
+        AssertNoControls(commentText);
     }
 
     [Fact]

@@ -331,6 +331,112 @@ public sealed class BoardOilClientCardTests
     }
 
     [Fact]
+    public async Task LoadCardCommentsAsync_UsesCardScopedEndpointAndMapsAuthors()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/boards/1/cards/42/comments", request.RequestUri?.AbsolutePath);
+            Assert.Equal("api-token", request.Headers.Authorization?.Parameter);
+            return Task.FromResult(SuccessResponse(
+                """
+                [{
+                  "id": 9,
+                  "cardId": 42,
+                  "authorUserId": 7,
+                  "text": "First line\nSecond line",
+                  "postedAtUtc": "2026-08-31T08:20:00Z",
+                  "authorDisplayName": "Luke",
+                  "authorImageRelativePath": "/images/luke.png"
+                }]
+                """));
+        });
+        await using var client = CreateClient(handler);
+
+        var comments = await client.LoadCardCommentsAsync(
+            1,
+            42,
+            TestContext.Current.CancellationToken);
+
+        var comment = Assert.Single(comments);
+        Assert.Equal(9, comment.Id);
+        Assert.Equal(42, comment.CardId);
+        Assert.Equal(7, comment.AuthorUserId);
+        Assert.Equal("First line\nSecond line", comment.Text);
+        Assert.Equal("Luke", comment.AuthorDisplayName);
+        Assert.Equal("/images/luke.png", comment.AuthorImageRelativePath);
+    }
+
+    [Fact]
+    public async Task CreateCardCommentAsync_SendsTextOnlyAndMapsCreatedComment()
+    {
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("/api/boards/1/cards/42/comments", request.RequestUri?.AbsolutePath);
+            Assert.Equal("api-token", request.Headers.Authorization?.Parameter);
+            using var body = JsonDocument.Parse(
+                await request.Content!.ReadAsStringAsync(cancellationToken));
+            Assert.Equal(["text"], body.RootElement.EnumerateObject().Select(property => property.Name));
+            Assert.Equal("A new comment", body.RootElement.GetProperty("text").GetString());
+            return JsonResponse(
+                HttpStatusCode.Created,
+                """
+                {
+                  "success": true,
+                  "data": {
+                    "id": 10,
+                    "cardId": 42,
+                    "authorUserId": 7,
+                    "text": "A new comment",
+                    "postedAtUtc": "2026-08-31T08:25:00Z",
+                    "authorDisplayName": "Luke",
+                    "authorImageRelativePath": null
+                  },
+                  "statusCode": 201,
+                  "message": null
+                }
+                """);
+        });
+        await using var client = CreateClient(handler);
+
+        var comment = await client.CreateCardCommentAsync(
+            1,
+            42,
+            "A new comment",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(10, comment.Id);
+        Assert.Equal("A new comment", comment.Text);
+    }
+
+    [Fact]
+    public async Task CreateCardCommentAsync_ExposesTextValidationErrors()
+    {
+        var handler = new StubHttpMessageHandler((_, _) => Task.FromResult(JsonResponse(
+            HttpStatusCode.UnprocessableEntity,
+            """
+            {
+              "success": false,
+              "data": null,
+              "statusCode": 422,
+              "message": "Validation failed.",
+              "validationErrors": { "text": ["Comment text is required."] }
+            }
+            """)));
+        await using var client = CreateClient(handler);
+
+        var exception = await Assert.ThrowsAsync<BoardOilRequestException>(
+            () => client.CreateCardCommentAsync(
+                1,
+                42,
+                string.Empty,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(["Comment text is required."], exception.ValidationErrors["text"]);
+    }
+
+    [Fact]
     public async Task CreateCardAsync_ExposesBoardOilValidationErrors()
     {
         var handler = new StubHttpMessageHandler((_, _) => Task.FromResult(JsonResponse(

@@ -31,9 +31,12 @@ internal sealed record CardDetailLayout(
     int? TitleCursorColumn,
     int DescriptionTextWidth,
     IReadOnlyList<CardDetailLine> DescriptionLines,
+    IReadOnlyList<CardDetailLine> CommentLines,
     IReadOnlyList<CardDetailLine> OptionsLines,
     int? DescriptionCursorRow,
     int? DescriptionCursorColumn,
+    int? CommentCursorRow,
+    int? CommentCursorColumn,
     int TagsFirstRow,
     int TagsLastRow,
     int ColumnFirstRow,
@@ -55,6 +58,8 @@ internal sealed record CardDetailLayout(
 
     public int DescriptionMaxScroll => Math.Max(0, DescriptionLines.Count - PaneViewportRows);
 
+    public int CommentsMaxScroll => Math.Max(0, CommentLines.Count - PaneViewportRows);
+
     public int OptionsMaxScroll => Math.Max(0, OptionsLines.Count - PaneViewportRows);
 }
 
@@ -67,7 +72,11 @@ internal sealed class CardDetailLayoutEngine
         int requestedHeight,
         CardDetailField? editingField = null,
         MultilineTextEditor? editor = null,
-        bool showTimestamps = true)
+        bool showTimestamps = true,
+        IReadOnlyList<CardComment>? comments = null,
+        string? commentDraft = null,
+        bool commentsLoading = false,
+        bool commentsLoadFailed = false)
     {
         var width = Math.Max(40, requestedWidth);
         var height = Math.Max(12, requestedHeight);
@@ -135,6 +144,15 @@ internal sealed class CardDetailLayoutEngine
             descriptionCursorColumn = editorLayout.CursorColumn;
         }
 
+        var commentEditor = editingField == CardDetailField.Comments ? editor : null;
+        var commentContent = BuildCommentLines(
+            comments,
+            commentDraft,
+            descriptionWidth,
+            commentEditor,
+            commentsLoading,
+            commentsLoadFailed);
+
         var externalUrlEditor = editingField == CardDetailField.ExternalUrl ? editor : null;
         var options = BuildOptionsLines(
             data,
@@ -160,9 +178,12 @@ internal sealed class CardDetailLayoutEngine
             titleCursorColumn,
             descriptionTextWidth,
             descriptionLines,
+            commentContent.Lines,
             options.Lines,
             descriptionCursorRow,
             descriptionCursorColumn,
+            commentContent.CursorRow,
+            commentContent.CursorColumn,
             options.TagsFirstRow,
             options.TagsLastRow,
             options.ColumnFirstRow,
@@ -177,6 +198,105 @@ internal sealed class CardDetailLayoutEngine
             options.ExternalUrlLastRow,
             options.ExternalUrlCursorRow,
             options.ExternalUrlCursorColumn);
+    }
+
+    private static CommentContent BuildCommentLines(
+        IReadOnlyList<CardComment>? comments,
+        string? commentDraft,
+        int width,
+        MultilineTextEditor? editor,
+        bool loading,
+        bool loadFailed)
+    {
+        var lines = new List<CardDetailLine>();
+        int? cursorRow = null;
+        int? cursorColumn = null;
+        if (editor is not null)
+        {
+            lines.Add(Line("COMMENT DRAFT · CTRL+S TO POST", BoardStyles.TextMuted, bold: true));
+            var editorLayout = editor.CreateVisualLayout(Math.Max(1, width - 1));
+            cursorRow = lines.Count + editorLayout.CursorRow;
+            cursorColumn = editorLayout.CursorColumn;
+            lines.AddRange(editorLayout.Lines.Select(line => Line(line.Text, BoardStyles.TextStrong)));
+            lines.Add(CardDetailLine.Empty);
+        }
+        else if (!string.IsNullOrEmpty(commentDraft))
+        {
+            lines.Add(Line("COMMENT DRAFT · ENTER TO EDIT", BoardStyles.Selection, bold: true));
+            foreach (var sourceLine in commentDraft
+                         .Replace("\r\n", "\n", StringComparison.Ordinal)
+                         .Split('\n'))
+            {
+                if (sourceLine.Length == 0)
+                {
+                    lines.Add(CardDetailLine.Empty);
+                }
+                else
+                {
+                    lines.AddRange(UnicodeDisplay.WrapText(sourceLine, width, width)
+                        .Select(line => Line(line, BoardStyles.TextStrong)));
+                }
+            }
+
+            lines.Add(CardDetailLine.Empty);
+        }
+
+        if (loading)
+        {
+            lines.Add(Line("Loading comments…", BoardStyles.TextMuted));
+            return new CommentContent(lines, cursorRow, cursorColumn);
+        }
+
+        if (comments is null)
+        {
+            lines.Add(Line(
+                loadFailed ? "Could not load comments. Press enter to retry." : "Press enter to load comments.",
+                loadFailed ? BoardStyles.Danger : BoardStyles.TextMuted));
+            return new CommentContent(lines, cursorRow, cursorColumn);
+        }
+
+        if (comments.Count == 0)
+        {
+            lines.Add(Line("No comments yet. Press enter to write one.", BoardStyles.TextMuted));
+            return new CommentContent(lines, cursorRow, cursorColumn);
+        }
+
+        foreach (var comment in comments
+                     .OrderByDescending(comment => comment.PostedAtUtc)
+                     .ThenByDescending(comment => comment.Id))
+        {
+            if (lines.Count > 0 && lines[^1] != CardDetailLine.Empty)
+            {
+                lines.Add(CardDetailLine.Empty);
+            }
+
+            var author = string.IsNullOrWhiteSpace(comment.AuthorDisplayName)
+                ? "Unknown user"
+                : comment.AuthorDisplayName;
+            lines.Add(new CardDetailLine(
+            [
+                new CardDetailSpan($"{UnicodeDisplay.EmojiLabelPrefix("👤")}{author}", BoardStyles.TextStrong, Bold: true),
+                new CardDetailSpan(
+                    $" · {FormatDate(comment.PostedAtUtc)}",
+                    BoardStyles.TextMuted)
+            ]));
+            foreach (var sourceLine in comment.Text
+                         .Replace("\r\n", "\n", StringComparison.Ordinal)
+                         .Split('\n'))
+            {
+                if (sourceLine.Length == 0)
+                {
+                    lines.Add(CardDetailLine.Empty);
+                }
+                else
+                {
+                    lines.AddRange(UnicodeDisplay.WrapText(sourceLine, width, width)
+                        .Select(line => Line(line, BoardStyles.TextStrong)));
+                }
+            }
+        }
+
+        return new CommentContent(lines, cursorRow, cursorColumn);
     }
 
     private static IReadOnlyList<CardDetailLine> BuildDescriptionLines(string description, int width)
@@ -412,6 +532,11 @@ internal sealed class CardDetailLayoutEngine
         int ExternalUrlLastRow,
         int? ExternalUrlCursorRow,
         int? ExternalUrlCursorColumn);
+
+    private sealed record CommentContent(
+        IReadOnlyList<CardDetailLine> Lines,
+        int? CursorRow,
+        int? CursorColumn);
 
     private readonly record struct FieldRows(int First, int Last);
 

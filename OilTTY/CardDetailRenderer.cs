@@ -5,6 +5,8 @@ internal sealed class CardDetailRenderer
         BoardCard card,
         CardDetailLayout layout,
         CardDetailPane activePane,
+        CardDetailMainTab mainTab,
+        int? commentCount,
         CardDetailField focusedField,
         CardDetailField? editingField,
         InlineMultiChoicePicker<CardTag>? tagPicker,
@@ -16,6 +18,7 @@ internal sealed class CardDetailRenderer
         bool isNew,
         bool confirmingDiscard,
         int requestedDescriptionScroll,
+        int requestedCommentsScroll,
         int requestedOptionsScroll,
         string status,
         string? feedback,
@@ -51,17 +54,31 @@ internal sealed class CardDetailRenderer
             0,
             layout.DescriptionMaxScroll);
         var optionsScroll = Math.Clamp(requestedOptionsScroll, 0, layout.OptionsMaxScroll);
+        var commentsScroll = Math.Clamp(requestedCommentsScroll, 0, layout.CommentsMaxScroll);
         if (layout.IsWide)
         {
-            var descriptionCursor = DrawDescriptionPane(
-                canvas,
-                layout,
-                descriptionScroll,
-                focusedField == CardDetailField.Description,
-                editingField == CardDetailField.Description,
-                feedback: null,
-                feedbackIsError);
-            cursor ??= descriptionCursor;
+            var mainCursor = mainTab == CardDetailMainTab.Comments
+                ? DrawCommentsPane(
+                    canvas,
+                    layout,
+                    commentsScroll,
+                    focusedField == CardDetailField.Comments,
+                    editingField == CardDetailField.Comments,
+                    isNew,
+                    commentCount,
+                    feedback: null,
+                    feedbackIsError)
+                : DrawDescriptionPane(
+                    canvas,
+                    layout,
+                    descriptionScroll,
+                    focusedField == CardDetailField.Description,
+                    editingField == CardDetailField.Description,
+                    isNew,
+                    commentCount,
+                    feedback: null,
+                    feedbackIsError);
+            cursor ??= mainCursor;
             var optionsCursor = DrawOptionsPane(
                 canvas,
                 layout,
@@ -80,15 +97,28 @@ internal sealed class CardDetailRenderer
         }
         else if (activePane == CardDetailPane.Description)
         {
-            var descriptionCursor = DrawDescriptionPane(
-                canvas,
-                layout,
-                descriptionScroll,
-                focusedField == CardDetailField.Description,
-                editingField == CardDetailField.Description,
-                feedback,
-                feedbackIsError);
-            cursor ??= descriptionCursor;
+            var mainCursor = mainTab == CardDetailMainTab.Comments
+                ? DrawCommentsPane(
+                    canvas,
+                    layout,
+                    commentsScroll,
+                    focusedField == CardDetailField.Comments,
+                    editingField == CardDetailField.Comments,
+                    isNew,
+                    commentCount,
+                    feedback,
+                    feedbackIsError)
+                : DrawDescriptionPane(
+                    canvas,
+                    layout,
+                    descriptionScroll,
+                    focusedField == CardDetailField.Description,
+                    editingField == CardDetailField.Description,
+                    isNew,
+                    commentCount,
+                    feedback,
+                    feedbackIsError);
+            cursor ??= mainCursor;
         }
         else
         {
@@ -232,6 +262,8 @@ internal sealed class CardDetailRenderer
         int scroll,
         bool focused,
         bool editing,
+        bool isNew,
+        int? commentCount,
         string? feedback,
         bool feedbackIsError)
     {
@@ -239,14 +271,16 @@ internal sealed class CardDetailRenderer
         var width = layout.MainWidth;
         var background = layout.IsWide ? BoardStyles.PanelBackground : BoardStyles.RootBackground;
         canvas.Fill(x, layout.ContentTop, width, layout.ContentBottom - layout.ContentTop, background);
-        DrawPaneHeading(
+        DrawMainTabHeading(
             canvas,
             x,
             layout.ContentTop,
             width,
-            editing ? "DESCRIPTION · EDITING" : "DESCRIPTION",
+            CardDetailMainTab.Description,
             focused,
-            showAnchor: true,
+            editing,
+            isNew,
+            commentCount,
             background,
             feedback,
             feedbackIsError);
@@ -285,6 +319,160 @@ internal sealed class CardDetailRenderer
         }
 
         return new TerminalCursor(contentX + cursorColumn, cursorY);
+    }
+
+    private static TerminalCursor? DrawCommentsPane(
+        TerminalCanvas canvas,
+        CardDetailLayout layout,
+        int scroll,
+        bool focused,
+        bool editing,
+        bool isNew,
+        int? commentCount,
+        string? feedback,
+        bool feedbackIsError)
+    {
+        var x = layout.MainX;
+        var width = layout.MainWidth;
+        var background = layout.IsWide ? BoardStyles.PanelBackground : BoardStyles.RootBackground;
+        canvas.Fill(x, layout.ContentTop, width, layout.ContentBottom - layout.ContentTop, background);
+        DrawMainTabHeading(
+            canvas,
+            x,
+            layout.ContentTop,
+            width,
+            CardDetailMainTab.Comments,
+            focused,
+            editing,
+            isNew,
+            commentCount,
+            background,
+            feedback,
+            feedbackIsError);
+
+        var contentX = layout.IsWide ? x + 1 : x;
+        var contentWidth = layout.IsWide ? width - 2 : width;
+        DrawLines(
+            canvas,
+            layout.CommentLines,
+            contentX,
+            contentWidth,
+            layout.PaneContentTop,
+            layout.ContentBottom,
+            scroll,
+            background);
+        DrawScrollIndicator(
+            canvas,
+            x + width - 1,
+            layout.PaneContentTop,
+            layout.PaneViewportRows,
+            layout.CommentLines.Count,
+            layout.CommentsMaxScroll,
+            scroll);
+
+        if (!editing
+            || layout.CommentCursorRow is not int cursorRow
+            || layout.CommentCursorColumn is not int cursorColumn)
+        {
+            return null;
+        }
+
+        var cursorY = layout.PaneContentTop + cursorRow - scroll;
+        if (cursorY < layout.PaneContentTop || cursorY >= layout.ContentBottom)
+        {
+            return null;
+        }
+
+        return new TerminalCursor(contentX + cursorColumn, cursorY);
+    }
+
+    private static void DrawMainTabHeading(
+        TerminalCanvas canvas,
+        int x,
+        int y,
+        int width,
+        CardDetailMainTab selectedTab,
+        bool focused,
+        bool editing,
+        bool isNew,
+        int? commentCount,
+        Rgb background,
+        string? feedback,
+        bool feedbackIsError)
+    {
+        canvas.Put(
+            x,
+            y,
+            "▌",
+            focused ? BoardStyles.Selection : BoardStyles.FieldAnchorPlaceholder,
+            background,
+            bold: focused);
+        if (width < 24)
+        {
+            var compactLabel = selectedTab == CardDetailMainTab.Comments
+                ? "‹ COMMENTS"
+                : isNew ? "DESCRIPTION" : "DESCRIPTION ›";
+            canvas.Put(
+                x + 2,
+                y,
+                compactLabel,
+                BoardStyles.TextStrong,
+                background,
+                bold: true,
+                maxWidth: width - 2);
+            return;
+        }
+
+        const string descriptionLabel = "DESCRIPTION";
+        var description = selectedTab == CardDetailMainTab.Description && editing
+            ? $"{descriptionLabel} · EDITING"
+            : descriptionLabel;
+        canvas.Put(
+            x + 2,
+            y,
+            description,
+            selectedTab == CardDetailMainTab.Description ? BoardStyles.TextStrong : BoardStyles.TextMuted,
+            background,
+            bold: selectedTab == CardDetailMainTab.Description,
+            maxWidth: width - 2);
+        var labelEnd = x + 2 + UnicodeDisplay.TextWidth(description);
+        if (!isNew && labelEnd + 4 < x + width)
+        {
+            const string commentsLabel = "COMMENTS";
+            var comments = selectedTab == CardDetailMainTab.Comments && editing
+                ? $"{commentsLabel} · WRITING"
+                : commentCount is int count
+                    ? $"{commentsLabel} ({count})"
+                    : commentsLabel;
+            canvas.Put(
+                labelEnd + 3,
+                y,
+                comments,
+                selectedTab == CardDetailMainTab.Comments ? BoardStyles.TextStrong : BoardStyles.TextMuted,
+                background,
+                bold: selectedTab == CardDetailMainTab.Comments,
+                maxWidth: Math.Max(1, x + width - labelEnd - 3));
+            labelEnd += 3 + UnicodeDisplay.TextWidth(comments);
+        }
+
+        if (string.IsNullOrWhiteSpace(feedback))
+        {
+            return;
+        }
+
+        var feedbackX = labelEnd + 2;
+        var available = Math.Max(0, x + width - feedbackX - 1);
+        if (available > 0)
+        {
+            canvas.Put(
+                feedbackX,
+                y,
+                UnicodeDisplay.Truncate(feedback, available),
+                feedbackIsError ? BoardStyles.Danger : BoardStyles.Connected,
+                background,
+                bold: true,
+                maxWidth: available);
+        }
     }
 
     private static TerminalCursor? DrawOptionsPane(
@@ -456,6 +644,7 @@ internal sealed class CardDetailRenderer
         DrawFooter(
             canvas,
             editingField is not null,
+            editingField == CardDetailField.Comments,
             choosing,
             multiChoosing,
             hasDraft,
@@ -719,6 +908,7 @@ internal sealed class CardDetailRenderer
     private static void DrawFooter(
         TerminalCanvas canvas,
         bool editing,
+        bool writingComment,
         bool choosing,
         bool multiChoosing,
         bool hasDraft,
@@ -761,7 +951,7 @@ internal sealed class CardDetailRenderer
             canvas.Put(13, canvas.Height - 1, "arrows", BoardStyles.Selection, bold: true);
             canvas.Put(20, canvas.Height - 1, choosing ? "choose" : "cursor", BoardStyles.TextMuted);
             canvas.Put(27, canvas.Height - 1, "ctrl+s", BoardStyles.Selection, bold: true);
-            canvas.Put(34, canvas.Height - 1, "save", BoardStyles.TextMuted);
+            canvas.Put(34, canvas.Height - 1, writingComment ? "post" : "save", BoardStyles.TextMuted);
             canvas.Put(41, canvas.Height - 1, "esc", BoardStyles.Selection, bold: true);
             canvas.Put(45, canvas.Height - 1, choosing ? "cancel" : "done", BoardStyles.TextMuted);
             return;
