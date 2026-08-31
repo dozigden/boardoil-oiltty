@@ -287,26 +287,12 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
 
         if (key.Key == ConsoleKey.UpArrow)
         {
-            if (_focusedField == CardDetailField.Comments)
-            {
-                Focus(CardDetailField.Title);
-                return ScreenUpdate<CardDetailCommand>.Continue();
-            }
-
-            MoveFocus(-1, wrap: false);
-            return ContinueOrLoadComments();
+            return HandleVerticalNavigation(-1, viewport);
         }
 
         if (key.Key == ConsoleKey.DownArrow)
         {
-            if (_focusedField == CardDetailField.Comments)
-            {
-                Focus(CardDetailField.Tags);
-                return ScreenUpdate<CardDetailCommand>.Continue();
-            }
-
-            MoveFocus(1, wrap: false);
-            return ContinueOrLoadComments();
+            return HandleVerticalNavigation(1, viewport);
         }
 
         if (key.Key == ConsoleKey.Enter)
@@ -323,8 +309,8 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         var layout = CreateLayout(CreateDisplayCard(), viewport);
         var delta = key.Key switch
         {
-            ConsoleKey.J or ConsoleKey.DownArrow => 1,
-            ConsoleKey.K or ConsoleKey.UpArrow => -1,
+            ConsoleKey.J => 1,
+            ConsoleKey.K => -1,
             ConsoleKey.PageDown => Math.Max(1, layout.PaneViewportRows - 1),
             ConsoleKey.PageUp => -Math.Max(1, layout.PaneViewportRows - 1),
             _ => 0
@@ -342,6 +328,31 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         return delta == 0
             ? ScreenUpdate<CardDetailCommand>.Continue(redraw: false)
             : SetActiveScroll(ActiveScroll() + delta, layout);
+    }
+
+    private ScreenUpdate<CardDetailCommand> HandleVerticalNavigation(
+        int delta,
+        TerminalViewport viewport)
+    {
+        if (_focusedField is CardDetailField.Description or CardDetailField.Comments)
+        {
+            var layout = CreateLayout(CreateDisplayCard(), viewport);
+            var scroll = ActiveScroll();
+            var maximumScroll = ActiveMaximumScroll(layout);
+            if ((delta < 0 && scroll > 0) || (delta > 0 && scroll < maximumScroll))
+            {
+                return SetActiveScroll(scroll + delta, layout);
+            }
+
+            if (_focusedField == CardDetailField.Comments)
+            {
+                Focus(delta < 0 ? CardDetailField.Title : CardDetailField.Tags);
+                return ScreenUpdate<CardDetailCommand>.Continue();
+            }
+        }
+
+        MoveFocus(delta, wrap: false);
+        return ContinueOrLoadComments();
     }
 
     public void BeginSaving()

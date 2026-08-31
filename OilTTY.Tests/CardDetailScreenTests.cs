@@ -276,7 +276,7 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
-    public void DescriptionArrows_MoveFocusWhileJAndKScrollVertically()
+    public void DescriptionArrows_ScrollBeforeMovingFocusAtTheBoundaries()
     {
         var (data, sourceCard) = DetailData();
         var card = sourceCard with
@@ -288,21 +288,24 @@ public sealed class CardDetailScreenTests
 
         screen.HandleKey(Key(ConsoleKey.DownArrow), viewport);
 
-        Assert.Equal(CardDetailField.Tags, screen.FocusedField);
-        Assert.Equal(0, screen.DescriptionScroll);
+        Assert.Equal(CardDetailField.Description, screen.FocusedField);
+        Assert.Equal(1, screen.DescriptionScroll);
 
-        screen.HandleKey(Key(ConsoleKey.LeftArrow), viewport);
+        screen.HandleKey(Key(ConsoleKey.J, 'j'), viewport);
+        Assert.Equal(2, screen.DescriptionScroll);
+        screen.HandleKey(Key(ConsoleKey.UpArrow), viewport);
+        Assert.Equal(1, screen.DescriptionScroll);
+        screen.HandleKey(Key(ConsoleKey.K, 'k'), viewport);
+        Assert.Equal(0, screen.DescriptionScroll);
         Assert.Equal(CardDetailField.Description, screen.FocusedField);
         screen.HandleKey(Key(ConsoleKey.UpArrow), viewport);
         Assert.Equal(CardDetailField.Title, screen.FocusedField);
         screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
         Assert.Equal(CardDetailField.Description, screen.FocusedField);
-        screen.HandleKey(Key(ConsoleKey.J, 'j'), viewport);
-        Assert.Equal(1, screen.DescriptionScroll);
-        Assert.Equal(CardDetailField.Description, screen.FocusedField);
-        screen.HandleKey(Key(ConsoleKey.K, 'k'), viewport);
-        Assert.Equal(0, screen.DescriptionScroll);
-        Assert.Equal(CardDetailField.Description, screen.FocusedField);
+        screen.HandleKey(Key(ConsoleKey.End), viewport);
+        Assert.True(screen.DescriptionScroll > 0);
+        screen.HandleKey(Key(ConsoleKey.DownArrow), viewport);
+        Assert.Equal(CardDetailField.Tags, screen.FocusedField);
     }
 
     [Fact]
