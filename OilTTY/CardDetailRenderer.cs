@@ -455,7 +455,6 @@ internal sealed class CardDetailRenderer
 
         DrawFooter(
             canvas,
-            focusedField,
             editingField is not null,
             choosing,
             multiChoosing,
@@ -719,7 +718,6 @@ internal sealed class CardDetailRenderer
 
     private static void DrawFooter(
         TerminalCanvas canvas,
-        CardDetailField focusedField,
         bool editing,
         bool choosing,
         bool multiChoosing,
@@ -765,26 +763,14 @@ internal sealed class CardDetailRenderer
             canvas.Put(27, canvas.Height - 1, "ctrl+s", BoardStyles.Selection, bold: true);
             canvas.Put(34, canvas.Height - 1, "save", BoardStyles.TextMuted);
             canvas.Put(41, canvas.Height - 1, "esc", BoardStyles.Selection, bold: true);
-            canvas.Put(45, canvas.Height - 1, "discard", BoardStyles.TextMuted);
+            canvas.Put(45, canvas.Height - 1, choosing ? "cancel" : "done", BoardStyles.TextMuted);
             return;
         }
 
-        if (focusedField == CardDetailField.Description)
-        {
-            canvas.Put(2, canvas.Height - 1, "↑/↓", BoardStyles.Selection, bold: true);
-            canvas.Put(6, canvas.Height - 1, "scroll", BoardStyles.TextMuted);
-            canvas.Put(13, canvas.Height - 1, "←/→", BoardStyles.Selection, bold: true);
-            canvas.Put(17, canvas.Height - 1, "field", BoardStyles.TextMuted);
-            canvas.Put(23, canvas.Height - 1, "enter", BoardStyles.Selection, bold: true);
-            canvas.Put(29, canvas.Height - 1, "edit", BoardStyles.TextMuted);
-        }
-        else
-        {
-            canvas.Put(2, canvas.Height - 1, "tab/arrows", BoardStyles.Selection, bold: true);
-            canvas.Put(13, canvas.Height - 1, "field", BoardStyles.TextMuted);
-            canvas.Put(20, canvas.Height - 1, "enter", BoardStyles.Selection, bold: true);
-            canvas.Put(26, canvas.Height - 1, "edit", BoardStyles.TextMuted);
-        }
+        canvas.Put(2, canvas.Height - 1, "tab/arrows", BoardStyles.Selection, bold: true);
+        canvas.Put(13, canvas.Height - 1, "field", BoardStyles.TextMuted);
+        canvas.Put(20, canvas.Height - 1, "enter", BoardStyles.Selection, bold: true);
+        canvas.Put(26, canvas.Height - 1, "edit", BoardStyles.TextMuted);
 
         if (hasDraft)
         {

@@ -186,14 +186,14 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             return HandleChoicePickerKey(key, viewport);
         }
 
-        if (key.Key == ConsoleKey.Escape)
-        {
-            return DiscardOrClose();
-        }
-
         if (_editor is not null)
         {
             return HandleEditorKey(key, viewport);
+        }
+
+        if (key.Key == ConsoleKey.Escape)
+        {
+            return DiscardOrClose();
         }
 
         if (key.Key == ConsoleKey.Q)
@@ -210,14 +210,6 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         {
             MoveFocus(key.Modifiers.HasFlag(ConsoleModifiers.Shift) ? -1 : 1);
             return ScreenUpdate<CardDetailCommand>.Continue();
-        }
-
-        if (_focusedField == CardDetailField.Description
-            && key.Key is ConsoleKey.UpArrow or ConsoleKey.DownArrow)
-        {
-            var descriptionLayout = CreateLayout(CreateDisplayCard(), viewport);
-            var scrollDelta = key.Key == ConsoleKey.DownArrow ? 1 : -1;
-            return SetActiveScroll(ActiveScroll() + scrollDelta, descriptionLayout);
         }
 
         if (key.Key == ConsoleKey.LeftArrow)
@@ -323,6 +315,12 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         ConsoleKeyInfo key,
         TerminalViewport viewport)
     {
+        if (key.Key == ConsoleKey.Escape)
+        {
+            CommitEditor();
+            return ScreenUpdate<CardDetailCommand>.Continue();
+        }
+
         if (key.Key == ConsoleKey.S && key.Modifiers.HasFlag(ConsoleModifiers.Control))
         {
             return RequestSave();

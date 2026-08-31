@@ -276,7 +276,7 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
-    public void DescriptionArrows_ScrollVerticallyAndMoveFocusHorizontally()
+    public void DescriptionArrows_MoveFocusWhileJAndKScrollVertically()
     {
         var (data, sourceCard) = DetailData();
         var card = sourceCard with
@@ -288,16 +288,21 @@ public sealed class CardDetailScreenTests
 
         screen.HandleKey(Key(ConsoleKey.DownArrow), viewport);
 
-        Assert.Equal(CardDetailField.Description, screen.FocusedField);
-        Assert.Equal(1, screen.DescriptionScroll);
+        Assert.Equal(CardDetailField.Tags, screen.FocusedField);
+        Assert.Equal(0, screen.DescriptionScroll);
 
         screen.HandleKey(Key(ConsoleKey.LeftArrow), viewport);
+        Assert.Equal(CardDetailField.Description, screen.FocusedField);
+        screen.HandleKey(Key(ConsoleKey.UpArrow), viewport);
         Assert.Equal(CardDetailField.Title, screen.FocusedField);
         screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
         Assert.Equal(CardDetailField.Description, screen.FocusedField);
-        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
-        Assert.Equal(CardDetailField.Tags, screen.FocusedField);
+        screen.HandleKey(Key(ConsoleKey.J, 'j'), viewport);
         Assert.Equal(1, screen.DescriptionScroll);
+        Assert.Equal(CardDetailField.Description, screen.FocusedField);
+        screen.HandleKey(Key(ConsoleKey.K, 'k'), viewport);
+        Assert.Equal(0, screen.DescriptionScroll);
+        Assert.Equal(CardDetailField.Description, screen.FocusedField);
     }
 
     [Fact]
@@ -325,9 +330,10 @@ public sealed class CardDetailScreenTests
         screen.HandleKey(Key(ConsoleKey.X, 'X'), viewport);
         screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         var cancelled = PlainText(screen.Render(viewport).Canvas);
 
-        Assert.True(screen.IsEditing);
+        Assert.False(screen.IsEditing);
         Assert.Equal(scroll, screen.DescriptionScroll);
         Assert.Contains("BOTTOM marker", cancelled);
         Assert.DoesNotContain("TOP marker", cancelled);
@@ -352,7 +358,7 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
-    public void DescriptionEdit_ShowsCursorAndEscapeOffersDestructiveCloseConfirmation()
+    public void DescriptionEdit_FirstEscapeFinishesEditingAndSecondOffersDiscardConfirmation()
     {
         var (data, card) = DetailData();
         var screen = new CardDetailScreen(data, card, "connected");
@@ -362,14 +368,19 @@ public sealed class CardDetailScreenTests
         screen.HandleKey(Key(ConsoleKey.X, 'X'), viewport);
         var editingFrame = screen.Render(viewport);
         var editedDescription = screen.Description;
+        var finishEditing = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        var finishedFrame = screen.Render(viewport);
         var warning = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         var warningText = PlainText(screen.Render(viewport).Canvas);
 
         Assert.NotNull(editingFrame.Cursor);
         Assert.StartsWith("X", editedDescription);
-        Assert.False(warning.IsComplete);
-        Assert.True(screen.IsEditing);
+        Assert.False(finishEditing.IsComplete);
+        Assert.False(screen.IsEditing);
+        Assert.Null(finishedFrame.Cursor);
         Assert.Equal(editedDescription, screen.Description);
+        Assert.False(warning.IsComplete);
+        Assert.True(screen.IsConfirmingDiscard);
         Assert.Contains("Discard changes?", warningText);
     }
 
@@ -554,7 +565,7 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
-    public void ArrowKeys_MoveFieldFocusWithoutWrappingOutsideDescriptionScrolling()
+    public void ArrowKeys_MoveFieldFocusWithoutWrapping()
     {
         var (data, card) = DetailData();
         var screen = new CardDetailScreen(data, card, "connected");
@@ -567,8 +578,6 @@ public sealed class CardDetailScreenTests
         screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
         Assert.Equal(CardDetailField.Description, screen.FocusedField);
         screen.HandleKey(Key(ConsoleKey.DownArrow), viewport);
-        Assert.Equal(CardDetailField.Description, screen.FocusedField);
-        screen.HandleKey(Key(ConsoleKey.RightArrow), viewport);
         Assert.Equal(CardDetailField.Tags, screen.FocusedField);
         screen.HandleKey(Key(ConsoleKey.DownArrow), viewport);
         Assert.Equal(CardDetailField.BoardColumn, screen.FocusedField);
@@ -594,6 +603,8 @@ public sealed class CardDetailScreenTests
         Assert.Equal(CardDetailField.Tags, screen.FocusedField);
         screen.HandleKey(Key(ConsoleKey.UpArrow), viewport);
         Assert.Equal(CardDetailField.Description, screen.FocusedField);
+        screen.HandleKey(Key(ConsoleKey.UpArrow), viewport);
+        Assert.Equal(CardDetailField.Title, screen.FocusedField);
     }
 
     [Theory]
@@ -1319,6 +1330,27 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
+    public void ExternalUrlEdit_FirstEscapeFinishesEditingAndPreservesTheDraft()
+    {
+        var (data, sourceCard) = DetailData();
+        var card = sourceCard with { ExternalUrl = null };
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        FocusField(screen, CardDetailField.ExternalUrl, viewport);
+        screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+        Type(screen, "https://boardoil.test/card/802", viewport);
+
+        var finishEditing = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        var warning = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+
+        Assert.False(finishEditing.IsComplete);
+        Assert.False(screen.IsEditing);
+        Assert.Equal("https://boardoil.test/card/802", screen.ExternalUrl);
+        Assert.False(warning.IsComplete);
+        Assert.True(screen.IsConfirmingDiscard);
+    }
+
+    [Fact]
     public void InvalidExternalUrl_StaysInTheDraftAndFocusesTheField()
     {
         var (data, sourceCard) = DetailData();
@@ -1386,15 +1418,17 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
-    public void Escape_WithUnchangedEditDraft_ClosesWithoutConfirmation()
+    public void Escape_WithUnchangedEditDraft_FinishesEditingThenClosesWithoutConfirmation()
     {
         var (data, card) = DetailData();
         var screen = new CardDetailScreen(data, card, "connected");
         var viewport = new TerminalViewport(80, 24);
         screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
 
+        var finishEditing = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         var close = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
 
+        Assert.False(finishEditing.IsComplete);
         Assert.True(close.IsComplete);
         Assert.Equal(CardDetailCommand.Close, close.Result);
         Assert.False(screen.IsConfirmingDiscard);
@@ -1466,11 +1500,13 @@ public sealed class CardDetailScreenTests
         var viewport = new TerminalViewport(80, 24);
         Type(screen, "Unsaved", viewport);
 
+        var finishEditing = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         var warning = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         var cancel = screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         screen.HandleKey(Key(ConsoleKey.Escape), viewport);
         var close = screen.HandleKey(Key(ConsoleKey.Y, 'y'), viewport);
 
+        Assert.False(finishEditing.IsComplete);
         Assert.False(warning.IsComplete);
         Assert.False(cancel.IsComplete);
         Assert.True(screen.HasUnsavedChanges);
@@ -1480,15 +1516,19 @@ public sealed class CardDetailScreenTests
     }
 
     [Fact]
-    public void CreateScreen_EscapeWithoutChangesClosesImmediately()
+    public void CreateScreen_EscapeWithoutChangesFinishesEditingThenCloses()
     {
         var (data, _) = DetailData();
         var screen = new CardDetailScreen(data, CardDraft.CreateNew(data, 2)!, "connected");
 
+        var finishEditing = screen.HandleKey(
+            Key(ConsoleKey.Escape),
+            new TerminalViewport(80, 24));
         var close = screen.HandleKey(
             Key(ConsoleKey.Escape),
             new TerminalViewport(80, 24));
 
+        Assert.False(finishEditing.IsComplete);
         Assert.True(close.IsComplete);
         Assert.Equal(CardDetailCommand.Close, close.Result);
         Assert.False(screen.IsConfirmingDiscard);
