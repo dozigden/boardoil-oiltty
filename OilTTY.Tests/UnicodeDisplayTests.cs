@@ -25,4 +25,16 @@ public sealed class UnicodeDisplayTests
     {
         Assert.Equal("A…", UnicodeDisplay.Truncate("A👨‍💻B", 3));
     }
+
+    [Fact]
+    public void TextOperations_NeutraliseControlsWithoutChangingDisplayWidth()
+    {
+        const string source = "A\u001b👨‍💻B";
+        const string expected = "A�👨‍💻B";
+
+        Assert.Equal(expected, string.Concat(UnicodeDisplay.Graphemes(source)));
+        Assert.Equal(5, UnicodeDisplay.TextWidth(source));
+        Assert.Equal(expected, UnicodeDisplay.Truncate(source, 5));
+        Assert.Equal([expected], UnicodeDisplay.WrapText(source, 5, 5));
+    }
 }

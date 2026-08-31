@@ -45,5 +45,39 @@ public sealed class TerminalCanvasTests
         Assert.Equal(fill, canvas.CellAt(1, 0).Background);
     }
 
+    [Theory]
+    [InlineData("\u001b[31mred\u001b[0m", "�[31mred�[0m")]
+    [InlineData("\u001b]0;owned\u0007", "�]0;owned�")]
+    [InlineData("\u001b]52;c;payload\u001b\\", "�]52;c;payload�\\")]
+    [InlineData("\u009b31mred\u009c", "�31mred�")]
+    [InlineData("left\rright", "left�right")]
+    [InlineData("left\nright", "left�right")]
+    public void Put_NeutralisesTerminalControls(string source, string expected)
+    {
+        var canvas = new TerminalCanvas(32, 1, Foreground, Background);
+
+        canvas.Put(0, 0, source);
+
+        Assert.Equal(expected, PlainText(canvas));
+        Assert.DoesNotContain(PlainText(canvas), character => char.IsControl(character));
+    }
+
+    [Fact]
+    public void SetCell_NeutralisesTerminalControls()
+    {
+        var canvas = CreateCanvas();
+
+        canvas.SetCell(0, 0, "\u001b", Foreground, Background);
+
+        Assert.Equal("�", canvas.CellAt(0, 0).Grapheme);
+    }
+
     private static TerminalCanvas CreateCanvas() => new(4, 1, Foreground, Background);
+
+    private static string PlainText(TerminalCanvas canvas) =>
+        string.Concat(Enumerable.Range(0, canvas.Width)
+            .Select(x => canvas.CellAt(x, 0))
+            .Where(cell => !cell.Continuation)
+            .Select(cell => cell.Grapheme))
+        .TrimEnd();
 }

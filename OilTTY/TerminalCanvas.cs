@@ -48,7 +48,12 @@ internal sealed class TerminalCanvas
     public void SetCell(int x, int y, string grapheme, Rgb foreground, Rgb background, bool bold = false)
     {
         ClearWideGraphemeAt(x, y);
-        _cells[y, x] = new TerminalCell(grapheme, foreground, background, bold, false);
+        _cells[y, x] = new TerminalCell(
+            TerminalText.NeutraliseControls(grapheme),
+            foreground,
+            background,
+            bold,
+            false);
     }
 
     public void Fill(int x, int y, int width, int height, Rgb background)
@@ -169,7 +174,7 @@ internal sealed class TerminalCanvas
                     activeStyle = style;
                 }
 
-                output.Append(cell.Grapheme);
+                output.Append(TerminalText.NeutraliseControls(cell.Grapheme));
             }
 
             output.Append("\e[0m");
@@ -216,10 +221,33 @@ internal sealed class TerminalCanvas
     private readonly record struct CellStyle(Rgb Foreground, Rgb Background, bool Bold);
 }
 
+internal static class TerminalText
+{
+    private const char ControlReplacement = '\uFFFD';
+
+    public static string NeutraliseControls(string text)
+    {
+        char[]? neutralised = null;
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (!char.IsControl(text[index]))
+            {
+                continue;
+            }
+
+            neutralised ??= text.ToCharArray();
+            neutralised[index] = ControlReplacement;
+        }
+
+        return neutralised is null ? text : new string(neutralised);
+    }
+}
+
 internal static class UnicodeDisplay
 {
     public static IEnumerable<string> Graphemes(string text)
     {
+        text = TerminalText.NeutraliseControls(text);
         var enumerator = StringInfo.GetTextElementEnumerator(text);
         while (enumerator.MoveNext())
         {
@@ -231,6 +259,7 @@ internal static class UnicodeDisplay
 
     public static string EmojiLabelPrefix(string emoji)
     {
+        emoji = TerminalText.NeutraliseControls(emoji);
         if (string.IsNullOrWhiteSpace(emoji))
         {
             return string.Empty;
@@ -277,6 +306,7 @@ internal static class UnicodeDisplay
 
     public static string Truncate(string text, int width)
     {
+        text = TerminalText.NeutraliseControls(text);
         if (TextWidth(text) <= width)
         {
             return text;
@@ -309,6 +339,7 @@ internal static class UnicodeDisplay
         int firstLineWidth,
         int continuationWidth)
     {
+        text = TerminalText.NeutraliseControls(text);
         var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (words.Length == 0)
         {

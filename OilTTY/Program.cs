@@ -39,6 +39,6 @@ catch (OperationCanceledException)
 }
 catch (Exception exception)
 {
-    Console.Error.WriteLine($"OilTTY: {exception.Message}");
+    Console.Error.WriteLine($"OilTTY: {TerminalText.NeutraliseControls(exception.Message)}");
     return 1;
 }
