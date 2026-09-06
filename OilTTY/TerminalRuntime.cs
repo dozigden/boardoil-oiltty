@@ -24,6 +24,9 @@ internal sealed class TerminalRuntime
 {
     public TerminalViewport CurrentViewport => MeasureViewport(80, 24);
 
+    public void SetTitle(string title) =>
+        Console.Write($"\e]2;{TerminalText.NeutraliseControls(title)}\e\\");
+
     public static TerminalViewport MeasureViewport(int fallbackWidth, int fallbackHeight)
     {
         try

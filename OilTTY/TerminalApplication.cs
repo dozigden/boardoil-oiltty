@@ -20,6 +20,7 @@ internal sealed class TerminalApplication(
             return 0;
         }
 
+        _terminal.SetTitle($"Oiltty - {data.Board.Name}");
         while (true)
         {
             var command = await _terminal.RunAsync(screen);
@@ -76,6 +77,7 @@ internal sealed class TerminalApplication(
                 data = await _client.LoadBoardAsync(chosenBoard.Id);
                 currentBoardId = chosenBoard.Id;
                 screen.SwitchBoard(data);
+                _terminal.SetTitle($"Oiltty - {data.Board.Name}");
                 screen.SetStatus(ConnectedStatus());
             }
             catch (Exception exception)
@@ -263,6 +265,7 @@ internal sealed class TerminalApplication(
             var selectedCardId = screen.SelectedCardId;
             var data = await _client.LoadBoardAsync(currentBoardId);
             screen.ReplaceData(data, selectedCardId);
+            _terminal.SetTitle($"Oiltty - {data.Board.Name}");
             screen.SetStatus(ConnectedStatus());
         }
         catch (Exception exception)
