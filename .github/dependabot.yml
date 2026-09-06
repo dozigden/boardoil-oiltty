@@ -1,0 +1,9 @@
+version: 2
+
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/OilTTY.Tests"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
