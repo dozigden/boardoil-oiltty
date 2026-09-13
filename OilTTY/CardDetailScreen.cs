@@ -55,6 +55,7 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     private readonly string _status;
     private readonly bool _isNew;
     private readonly CardDraft? _initialDraft;
+    private readonly CardDescriptionImageStore? _descriptionImages;
     private BoardData _data;
     private BoardCard _card;
     private CardDetailPane _activePane = CardDetailPane.Description;
@@ -80,11 +81,16 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     private bool _commentsLoadFailed;
     private string? _commentDraft;
 
-    public CardDetailScreen(BoardData data, BoardCard card, string status)
+    public CardDetailScreen(
+        BoardData data,
+        BoardCard card,
+        string status,
+        CardDescriptionImageStore? descriptionImages = null)
     {
         _data = data;
         _card = card;
         _status = status;
+        _descriptionImages = descriptionImages;
     }
 
     public CardDetailScreen(BoardData data, CardDraft draft, string status)
@@ -158,6 +164,8 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
     public string? PendingCommentText => _commentDraft;
 
     public IReadOnlyList<CardComment>? Comments => _comments;
+
+    public long RenderRevision => _descriptionImages?.Revision ?? 0;
 
     public TerminalFrame Render(TerminalViewport viewport)
     {
@@ -1212,7 +1220,10 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
             comments: _comments,
             commentDraft: _commentDraft,
             commentsLoading: _commentsLoading,
-            commentsLoadFailed: _commentsLoadFailed);
+            commentsLoadFailed: _commentsLoadFailed,
+            descriptionImages: _editingField == CardDetailField.Description
+                ? null
+                : _descriptionImages);
 
     private static BoardCard CreateNewCardPreview(BoardData data, CardDraft draft)
     {

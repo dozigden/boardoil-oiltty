@@ -6,6 +6,7 @@ using System.Text.Json;
 internal sealed class AuthenticatedBoardOilTransport : IAsyncDisposable
 {
     private const string CsrfHeaderName = "X-BoardOil-CSRF";
+    private const int BinaryReadBufferSize = 81920;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _httpClient;
@@ -82,6 +83,42 @@ internal sealed class AuthenticatedBoardOilTransport : IAsyncDisposable
 
         using var retriedResponse = await _httpClient.SendAsync(retriedRequest, cancellationToken);
         return await ReadEnvelopeAsync<T>(retriedResponse, cancellationToken);
+    }
+
+    public async Task<byte[]> GetBytesAsync(
+        string path,
+        string expectedMediaType,
+        int maximumByteLength,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(expectedMediaType));
+        var attemptedToken = _httpClient.DefaultRequestHeaders.Authorization?.Parameter;
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        if (response.StatusCode != HttpStatusCode.Unauthorized || _session is null)
+        {
+            return await ReadBytesAsync(
+                response,
+                expectedMediaType,
+                maximumByteLength,
+                cancellationToken);
+        }
+
+        await RefreshAsync(attemptedToken, cancellationToken);
+        using var retriedRequest = new HttpRequestMessage(HttpMethod.Get, path);
+        retriedRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(expectedMediaType));
+        using var retriedResponse = await _httpClient.SendAsync(
+            retriedRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        return await ReadBytesAsync(
+            retriedResponse,
+            expectedMediaType,
+            maximumByteLength,
+            cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -254,5 +291,50 @@ internal sealed class AuthenticatedBoardOilTransport : IAsyncDisposable
         }
 
         return envelope.Data;
+    }
+
+    private static async Task<byte[]> ReadBytesAsync(
+        HttpResponseMessage response,
+        string expectedMediaType,
+        int maximumByteLength,
+        CancellationToken cancellationToken)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            await ReadEnvelopeAsync<object>(response, cancellationToken);
+            throw new InvalidOperationException("BoardOil returned an unsuccessful binary response.");
+        }
+
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (!string.Equals(mediaType, expectedMediaType, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"BoardOil returned {mediaType ?? "an unknown content type"} instead of {expectedMediaType}.");
+        }
+
+        if (response.Content.Headers.ContentLength is long contentLength
+            && contentLength > maximumByteLength)
+        {
+            throw new InvalidOperationException("BoardOil returned an oversized image thumbnail.");
+        }
+
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var destination = new MemoryStream();
+        var buffer = new byte[BinaryReadBufferSize];
+        while (true)
+        {
+            var count = await source.ReadAsync(buffer, cancellationToken);
+            if (count == 0)
+            {
+                return destination.ToArray();
+            }
+
+            if (destination.Length + count > maximumByteLength)
+            {
+                throw new InvalidOperationException("BoardOil returned an oversized image thumbnail.");
+            }
+
+            await destination.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+        }
     }
 }

@@ -18,6 +18,14 @@ OilTTY supports basic board navigation and card editing.  More advanced features
 
 You can switch board, create, move, and edit cards. You'll have to wait for creating tags, types, and slicks though.
 
+### Description images
+
+Attachment images embedded in card descriptions render as low-resolution,
+truecolour terminal art. OilTTY uses BoardOil's PNG thumbnails and terminal
+half-block cells, so this works without a terminal-specific image protocol.
+Images remain raw Markdown while editing, and unavailable previews fall back to
+their alt text.
+
 ### Full slick rendering
 
 Are you a macOS Safari user fed up of your slicks not spanning columns? Good news! Coloured text offers a better experience than Safari! Slicks render fully across columns in OilTTY.

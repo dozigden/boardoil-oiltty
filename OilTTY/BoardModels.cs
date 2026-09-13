@@ -87,6 +87,19 @@ internal sealed record CardComment(
 
 internal sealed record CreateCardCommentRequest(string Text);
 
+internal sealed record CardAttachment(
+    int Id,
+    string OriginalFileName,
+    string ContentType,
+    long ByteLength,
+    DateTime CreatedAtUtc,
+    int? CreatedByUserId,
+    bool HasThumbnail);
+
+internal sealed record CardAttachmentList(
+    IReadOnlyList<CardAttachment> Items,
+    long MaxUploadByteLength);
+
 internal sealed record CardMove(
     int CardId,
     int BoardColumnId,

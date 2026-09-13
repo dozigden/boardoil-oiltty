@@ -6,6 +6,8 @@ internal sealed record TerminalFrame(TerminalCanvas Canvas, TerminalCursor? Curs
 
 internal interface ITerminalScreen<TResult>
 {
+    long RenderRevision => 0;
+
     TerminalFrame Render(TerminalViewport viewport);
 
     ScreenUpdate<TResult> HandleKey(ConsoleKeyInfo key, TerminalViewport viewport);
@@ -46,6 +48,7 @@ internal sealed class TerminalRuntime
         CancellationToken cancellationToken = default)
     {
         var lastViewport = default(TerminalViewport);
+        var lastRenderRevision = screen.RenderRevision;
         var redraw = true;
         while (true)
         {
@@ -57,9 +60,16 @@ internal sealed class TerminalRuntime
                 lastViewport = viewport;
             }
 
+            if (screen.RenderRevision != lastRenderRevision)
+            {
+                redraw = true;
+            }
+
             if (redraw)
             {
+                var renderRevision = screen.RenderRevision;
                 Draw(screen.Render(viewport));
+                lastRenderRevision = renderRevision;
                 redraw = false;
             }
 

@@ -368,6 +368,67 @@ public sealed class BoardOilClientCardTests
     }
 
     [Fact]
+    public async Task LoadCardAttachmentsAsync_MapsThumbnailAvailability()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/boards/1/cards/42/attachments", request.RequestUri?.AbsolutePath);
+            return Task.FromResult(SuccessResponse(
+                """
+                {
+                  "items": [{
+                    "id": 7,
+                    "originalFileName": "diagram.png",
+                    "contentType": "image/png",
+                    "byteLength": 1234,
+                    "createdAtUtc": "2026-09-13T10:00:00Z",
+                    "createdByUserId": 3,
+                    "hasThumbnail": true
+                  }],
+                  "maxUploadByteLength": 10485760
+                }
+                """));
+        });
+        await using var client = CreateClient(handler);
+
+        var attachments = await client.LoadCardAttachmentsAsync(
+            1,
+            42,
+            TestContext.Current.CancellationToken);
+
+        var attachment = Assert.Single(attachments.Items);
+        Assert.Equal(7, attachment.Id);
+        Assert.Equal("diagram.png", attachment.OriginalFileName);
+        Assert.True(attachment.HasThumbnail);
+    }
+
+    [Fact]
+    public async Task LoadAttachmentThumbnailAsync_UsesThumbnailEndpoint()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/boards/1/attachments/7/thumbnail", request.RequestUri?.AbsolutePath);
+            Assert.Contains(request.Headers.Accept, value => value.MediaType == "image/png");
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([1, 2, 3])
+            };
+            response.Content.Headers.ContentType = new("image/png");
+            return Task.FromResult(response);
+        });
+        await using var client = CreateClient(handler);
+
+        var thumbnail = await client.LoadAttachmentThumbnailAsync(
+            1,
+            7,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([1, 2, 3], thumbnail);
+    }
+
+    [Fact]
     public async Task CreateCardCommentAsync_SendsTextOnlyAndMapsCreatedComment()
     {
         var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>

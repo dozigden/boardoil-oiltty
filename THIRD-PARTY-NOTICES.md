@@ -14,7 +14,28 @@ distributed with OilTTY.
 
 ## Components distributed with OilTTY
 
-The OilTTY application has no direct third-party NuGet package dependencies.
+OilTTY directly uses the following package. It is included in published
+application output.
+
+| Project | Package | Version | Package author | Declared license |
+| --- | --- | --- | --- | --- |
+| [StbImageSharp](https://github.com/StbSharp/StbImageSharp) | `StbImageSharp` | 2.30.16 | StbImageSharpTeam | `Unlicense OR MIT` |
+
+OilTTY uses StbImageSharp under the MIT alternative. The license expression,
+package author, repository URL, and repository commit below come from the
+`StbImageSharp.nuspec` embedded in NuGet package version 2.30.16:
+
+- License expression: `Unlicense OR MIT`
+- Package author: `StbImageSharpTeam`
+- Repository: <https://github.com/StbSharp/StbImageSharp>
+- Repository commit: `125af70cb557033f2c46aec8e82eaaf72ac49817`
+
+That package does not contain a standalone license file. Its repository README
+describes the project license as "Public Domain or MIT". `STB-LICENSE.txt`,
+distributed alongside OilTTY, preserves the dual-license notice from the
+underlying stb software and its copyright attribution to Sean Barrett. It is
+not an attribution of the StbImageSharp C# wrapper to Sean Barrett.
+
 This repository distributes source code, not compiled .NET binaries.
 
 A framework-dependent build requires a separately installed .NET 10 runtime,

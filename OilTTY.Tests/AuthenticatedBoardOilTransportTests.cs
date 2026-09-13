@@ -31,6 +31,83 @@ public sealed class AuthenticatedBoardOilTransportTests
     }
 
     [Fact]
+    public async Task GetBytesAsync_ReadsExpectedBinaryContentWithApiToken()
+    {
+        var handler = new StubHttpMessageHandler((request, call, _) =>
+        {
+            Assert.Equal(0, call);
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("api-token", request.Headers.Authorization?.Parameter);
+            Assert.Contains(request.Headers.Accept, value => value.MediaType == "image/png");
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent([1, 2, 3, 4])
+            };
+            response.Content.Headers.ContentType = new("image/png");
+            return Task.FromResult(response);
+        });
+        await using var transport = CreateTransport(handler);
+        transport.UseApiToken("api-token");
+
+        var bytes = await transport.GetBytesAsync(
+            "api/boards/1/attachments/7/thumbnail",
+            "image/png",
+            16,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([1, 2, 3, 4], bytes);
+    }
+
+    [Fact]
+    public async Task GetBytesAsync_RefreshesAndReplaysGetAfterUnauthorized()
+    {
+        var handler = new StubHttpMessageHandler((request, call, _) => Task.FromResult(call switch
+        {
+            0 => Success(Session("old-access", "refresh-one")),
+            1 => Failure(HttpStatusCode.Unauthorized, "expired"),
+            2 => Success(Session("new-access", "refresh-two")),
+            3 => PngResponse([4, 3, 2, 1], request.Headers.Authorization?.Parameter),
+            _ => throw new InvalidOperationException($"Unexpected HTTP call {call}.")
+        }));
+        await using var transport = CreateTransport(handler, new StubSessionStore());
+        await transport.LoginAsync("alice", "secret", TestContext.Current.CancellationToken);
+
+        var bytes = await transport.GetBytesAsync(
+            "api/boards/1/attachments/7/thumbnail",
+            "image/png",
+            16,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([4, 3, 2, 1], bytes);
+    }
+
+    [Fact]
+    public async Task GetBytesAsync_RejectsUnexpectedContentTypeAndOversizedContent()
+    {
+        var handler = new StubHttpMessageHandler((_, call, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(call == 0 ? [1] : new byte[17])
+            };
+            response.Content.Headers.ContentType = new(call == 0 ? "image/jpeg" : "image/png");
+            return Task.FromResult(response);
+        });
+        await using var transport = CreateTransport(handler);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => transport.GetBytesAsync(
+            "first",
+            "image/png",
+            16,
+            TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => transport.GetBytesAsync(
+            "second",
+            "image/png",
+            16,
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task SendAsync_RefreshesAndReplaysPutRequestAfterUnauthorized()
     {
         var requestBodies = new List<string>();
@@ -169,6 +246,17 @@ public sealed class AuthenticatedBoardOilTransportTests
         {
             Content = JsonContent.Create(value, options: JsonOptions)
         };
+
+    private static HttpResponseMessage PngResponse(byte[] bytes, string? token)
+    {
+        Assert.Equal("new-access", token);
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(bytes)
+        };
+        response.Content.Headers.ContentType = new("image/png");
+        return response;
+    }
 
     private sealed record TestResult(string Value);
 

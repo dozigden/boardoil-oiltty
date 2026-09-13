@@ -6,6 +6,7 @@ using System.Text.Json;
 internal sealed class BoardOilClient : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const int MaximumThumbnailByteLength = 256 * 1024;
 
     private readonly AuthenticatedBoardOilTransport _transport;
 
@@ -325,6 +326,24 @@ internal sealed class BoardOilClient : IAsyncDisposable
                     new CreateCardCommentRequest(text),
                     options: JsonOptions)
             },
+            cancellationToken);
+
+    public Task<CardAttachmentList> LoadCardAttachmentsAsync(
+        int boardId,
+        int cardId,
+        CancellationToken cancellationToken = default) =>
+        _transport.GetAsync<CardAttachmentList>(
+            $"api/boards/{boardId}/cards/{cardId}/attachments",
+            cancellationToken);
+
+    public Task<byte[]> LoadAttachmentThumbnailAsync(
+        int boardId,
+        int attachmentId,
+        CancellationToken cancellationToken = default) =>
+        _transport.GetBytesAsync(
+            $"api/boards/{boardId}/attachments/{attachmentId}/thumbnail",
+            "image/png",
+            MaximumThumbnailByteLength,
             cancellationToken);
 
     public ValueTask DisposeAsync() => _transport.DisposeAsync();

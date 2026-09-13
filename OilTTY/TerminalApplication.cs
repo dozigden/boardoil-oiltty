@@ -166,7 +166,12 @@ internal sealed class TerminalApplication(
             return false;
         }
 
-        var detailScreen = new CardDetailScreen(boardScreen.Data, selectedCard, ConnectedStatus());
+        using var descriptionImages = new CardDescriptionImageStore(_client, boardId, selectedCard.Id);
+        var detailScreen = new CardDetailScreen(
+            boardScreen.Data,
+            selectedCard,
+            ConnectedStatus(),
+            descriptionImages);
         while (true)
         {
             var command = await _terminal!.RunAsync(detailScreen);

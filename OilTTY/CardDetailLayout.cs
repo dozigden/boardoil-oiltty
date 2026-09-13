@@ -76,7 +76,8 @@ internal sealed class CardDetailLayoutEngine
         IReadOnlyList<CardComment>? comments = null,
         string? commentDraft = null,
         bool commentsLoading = false,
-        bool commentsLoadFailed = false)
+        bool commentsLoadFailed = false,
+        CardDescriptionImageStore? descriptionImages = null)
     {
         var width = Math.Max(40, requestedWidth);
         var height = Math.Max(12, requestedHeight);
@@ -127,12 +128,18 @@ internal sealed class CardDetailLayoutEngine
         var descriptionTextWidth = descriptionEditor is null
             ? descriptionWidth
             : Math.Max(1, descriptionWidth - 1);
+        var paneViewportRows = Math.Max(1, contentBottom - (contentTop + 2));
+        var maximumImageRows = paneViewportRows;
         IReadOnlyList<CardDetailLine> descriptionLines;
         int? descriptionCursorRow = null;
         int? descriptionCursorColumn = null;
         if (descriptionEditor is null)
         {
-            descriptionLines = BuildDescriptionLines(card.Description, descriptionTextWidth);
+            descriptionLines = BuildDescriptionLines(
+                card.Description,
+                descriptionTextWidth,
+                maximumImageRows,
+                descriptionImages);
         }
         else
         {
@@ -299,7 +306,11 @@ internal sealed class CardDetailLayoutEngine
         return new CommentContent(lines, cursorRow, cursorColumn);
     }
 
-    private static IReadOnlyList<CardDetailLine> BuildDescriptionLines(string description, int width)
+    private static IReadOnlyList<CardDetailLine> BuildDescriptionLines(
+        string description,
+        int width,
+        int maximumImageRows,
+        CardDescriptionImageStore? descriptionImages)
     {
         var lines = new List<CardDetailLine>();
 
@@ -311,6 +322,12 @@ internal sealed class CardDetailLayoutEngine
 
         foreach (var sourceLine in description.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
+            if (CardDescriptionImageMarkdown.TryParseLine(sourceLine, out var image))
+            {
+                lines.AddRange(BuildImageLines(image, width, maximumImageRows, descriptionImages));
+                continue;
+            }
+
             if (sourceLine.Length == 0)
             {
                 lines.Add(CardDetailLine.Empty);
@@ -323,6 +340,39 @@ internal sealed class CardDetailLayoutEngine
 
         return lines;
     }
+
+    private static IReadOnlyList<CardDetailLine> BuildImageLines(
+        CardDescriptionImageReference image,
+        int width,
+        int maximumImageRows,
+        CardDescriptionImageStore? descriptionImages)
+    {
+        var label = string.IsNullOrWhiteSpace(image.AltText)
+            ? image.AttachmentFileName ?? "Image"
+            : image.AltText;
+        if (image.AttachmentFileName is not string fileName || descriptionImages is null)
+        {
+            return PlaceholderLines($"▧ {label} — preview unavailable", width);
+        }
+
+        var snapshot = descriptionImages.Get(fileName);
+        return snapshot.Status switch
+        {
+            CardDescriptionThumbnailStatus.Ready when snapshot.Thumbnail is not null =>
+                snapshot.Thumbnail.RenderLines(
+                    width,
+                    maximumImageRows,
+                    BoardStyles.PanelBackground),
+            CardDescriptionThumbnailStatus.Loading =>
+                PlaceholderLines($"▧ {label} — loading…", width),
+            _ => PlaceholderLines($"▧ {label} — preview unavailable", width)
+        };
+    }
+
+    private static IReadOnlyList<CardDetailLine> PlaceholderLines(string text, int width) =>
+        UnicodeDisplay.WrapText(text, width, width)
+            .Select(line => Line(line, BoardStyles.TextMuted))
+            .ToArray();
 
     private static OptionsContent BuildOptionsLines(
         BoardData data,
