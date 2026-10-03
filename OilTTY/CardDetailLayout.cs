@@ -158,7 +158,9 @@ internal sealed class CardDetailLayoutEngine
             descriptionWidth,
             commentEditor,
             commentsLoading,
-            commentsLoadFailed);
+            commentsLoadFailed,
+            maximumImageRows,
+            descriptionImages);
 
         var externalUrlEditor = editingField == CardDetailField.ExternalUrl ? editor : null;
         var options = BuildOptionsLines(
@@ -213,7 +215,9 @@ internal sealed class CardDetailLayoutEngine
         int width,
         MultilineTextEditor? editor,
         bool loading,
-        bool loadFailed)
+        bool loadFailed,
+        int maximumImageRows,
+        CardDescriptionImageStore? images)
     {
         var lines = new List<CardDetailLine>();
         int? cursorRow = null;
@@ -287,20 +291,7 @@ internal sealed class CardDetailLayoutEngine
                     $" · {FormatDate(comment.PostedAtUtc)}",
                     BoardStyles.TextMuted)
             ]));
-            foreach (var sourceLine in comment.Text
-                         .Replace("\r\n", "\n", StringComparison.Ordinal)
-                         .Split('\n'))
-            {
-                if (sourceLine.Length == 0)
-                {
-                    lines.Add(CardDetailLine.Empty);
-                }
-                else
-                {
-                    lines.AddRange(UnicodeDisplay.WrapText(sourceLine, width, width)
-                        .Select(line => Line(line, BoardStyles.TextStrong)));
-                }
-            }
+            lines.AddRange(BuildReadOnlyTextLines(comment.Text, width, maximumImageRows, images));
         }
 
         return new CommentContent(lines, cursorRow, cursorColumn);
@@ -312,19 +303,26 @@ internal sealed class CardDetailLayoutEngine
         int maximumImageRows,
         CardDescriptionImageStore? descriptionImages)
     {
-        var lines = new List<CardDetailLine>();
-
         if (string.IsNullOrWhiteSpace(description))
         {
-            lines.Add(Line("No description.", BoardStyles.TextMuted));
-            return lines;
+            return [Line("No description.", BoardStyles.TextMuted)];
         }
 
-        foreach (var sourceLine in description.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        return BuildReadOnlyTextLines(description, width, maximumImageRows, descriptionImages);
+    }
+
+    private static IReadOnlyList<CardDetailLine> BuildReadOnlyTextLines(
+        string text,
+        int width,
+        int maximumImageRows,
+        CardDescriptionImageStore? images)
+    {
+        var lines = new List<CardDetailLine>();
+        foreach (var sourceLine in text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
         {
             if (CardDescriptionImageMarkdown.TryParseLine(sourceLine, out var image))
             {
-                lines.AddRange(BuildImageLines(image, width, maximumImageRows, descriptionImages));
+                lines.AddRange(BuildImageLines(image, width, maximumImageRows, images));
                 continue;
             }
 

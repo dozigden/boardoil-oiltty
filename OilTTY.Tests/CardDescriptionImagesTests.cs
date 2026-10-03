@@ -276,8 +276,10 @@ public sealed class CardDescriptionImagesTests
         Assert.Equal(0, listCalls);
     }
 
-    [Fact]
-    public void Detail_ClipsImageRowsAndScrollsToFollowingText()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Detail_ClipsImageRowsAndScrollsToFollowingText(bool inComment)
     {
         var (data, sourceCard) = DetailData();
         var rgba = Enumerable.Range(0, 20 * 20)
@@ -285,7 +287,7 @@ public sealed class CardDescriptionImagesTests
             .ToArray();
         var card = sourceCard with
         {
-            Description = "Before\n\n![Diagram](boardoil-attachment:diagram.png)\n\nAfter"
+            Description = inComment ? string.Empty : "Before\n\n![Diagram](boardoil-attachment:diagram.png)\n\nAfter"
         };
         using var store = new CardDescriptionImageStore(
             _ => Task.FromResult(Attachments(
@@ -294,6 +296,12 @@ public sealed class CardDescriptionImagesTests
         var viewport = new TerminalViewport(60, 14);
         var layout = new CardDetailLayoutEngine().Create(data, card, viewport.Width, viewport.Height);
         var screen = new CardDetailScreen(data, card, "connected", store);
+        if (inComment)
+        {
+            screen.HandleKey(new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false), viewport);
+            screen.ApplyComments([new CardComment(1, card.Id, 7,
+                "Before\n\n![Diagram](boardoil-attachment:diagram.png)\n\nAfter", DateTime.UnixEpoch, "Luke", null)]);
+        }
 
         var initial = screen.Render(viewport).Canvas;
         screen.HandleKey(new ConsoleKeyInfo('\0', ConsoleKey.End, false, false, false), viewport);
@@ -311,6 +319,139 @@ public sealed class CardDescriptionImagesTests
             Assert.InRange(candidate.Y, layout.PaneContentTop, layout.ContentBottom - 1);
         });
         Assert.Contains("After", PlainText(scrolled));
+    }
+
+    [Fact]
+    public void Comments_RenderTruecolourImagesAndShareTheDescriptionCache()
+    {
+        var (data, sourceCard) = DetailData();
+        const string markdown = "![Diagram](boardoil-attachment:diagram.png)";
+        var card = sourceCard with { Description = markdown };
+        var listCalls = 0;
+        var downloadCalls = 0;
+        using var store = new CardDescriptionImageStore(
+            _ =>
+            {
+                listCalls++;
+                return Task.FromResult(Attachments(
+                    new CardAttachment(7, "diagram.png", "image/png", 10, DateTime.UnixEpoch, null, true)));
+            },
+            (_, _) =>
+            {
+                downloadCalls++;
+                return Task.FromResult(Png(1, 2, [255, 0, 0, 255, 0, 0, 255, 255]));
+            });
+        var screen = new CardDetailScreen(data, card, "connected", store);
+        var viewport = new TerminalViewport(100, 30);
+        screen.Render(viewport);
+        screen.HandleKey(new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false), viewport);
+        screen.ApplyComments(
+        [
+            new CardComment(1, card.Id, 7, $"Before\n\n{markdown}\n\nAfter", DateTime.UnixEpoch, "Luke", null),
+            new CardComment(2, card.Id, 8, markdown, DateTime.UnixEpoch.AddMinutes(1), "Alex", null)
+        ]);
+
+        var rendered = screen.Render(viewport).Canvas;
+        var text = PlainText(rendered);
+
+        Assert.Equal(2, Enumerable.Range(0, rendered.Height)
+            .SelectMany(y => Enumerable.Range(0, rendered.Width).Select(x => rendered.CellAt(x, y)))
+            .Count(cell => cell.Grapheme == "▀" && cell.Foreground == new Rgb(255, 0, 0)
+                && cell.Background == new Rgb(0, 0, 255)));
+        Assert.Contains("Before", text);
+        Assert.Contains("After", text);
+        Assert.True(text.IndexOf("Alex", StringComparison.Ordinal) < text.IndexOf("Luke", StringComparison.Ordinal));
+        Assert.DoesNotContain("boardoil-attachment:", text);
+        Assert.Equal(1, listCalls);
+        Assert.Equal(1, downloadCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CommentDraft_RemainsMarkdownWithoutFetchingImages(bool editing)
+    {
+        var (data, card) = DetailData();
+        const string markdown = "![Draft](boardoil-attachment:draft.png)";
+        var listCalls = 0;
+        using var store = new CardDescriptionImageStore(
+            _ =>
+            {
+                listCalls++;
+                return Task.FromResult(Attachments());
+            },
+            (_, _) => throw new InvalidOperationException("Drafts should not load images."));
+
+        var layout = new CardDetailLayoutEngine().Create(data, card, 120, 24,
+            editingField: editing ? CardDetailField.Comments : null,
+            editor: editing ? new MultilineTextEditor(markdown) : null,
+            comments: [], commentDraft: markdown, descriptionImages: store);
+
+        var text = string.Join('\n', layout.CommentLines.Select(line => string.Concat(line.Spans.Select(span => span.Text))));
+        Assert.Contains(markdown, text);
+        Assert.DoesNotContain("preview unavailable", text);
+        Assert.Equal(0, listCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CommentImage_LoadCompletionRequestsRedrawAndShowsImageOrFallback(bool failed)
+    {
+        var (data, card) = DetailData();
+        var pending = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var store = new CardDescriptionImageStore(
+            _ => Task.FromResult(Attachments(
+                new CardAttachment(7, "diagram.png", "image/png", 10, DateTime.UnixEpoch, null, true))),
+            (_, _) => pending.Task);
+        var screen = new CardDetailScreen(data, card, "connected", store);
+        var viewport = new TerminalViewport(100, 24);
+        screen.HandleKey(new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false), viewport);
+        screen.ApplyComments([new CardComment(1, card.Id, 7,
+            "![Diagram](boardoil-attachment:diagram.png)", DateTime.UnixEpoch, "Luke", null)]);
+
+        Assert.Contains("Diagram — loading…", PlainText(screen.Render(viewport).Canvas));
+        var revision = screen.RenderRevision;
+        if (failed)
+        {
+            pending.SetException(new HttpRequestException("Offline"));
+        }
+        else
+        {
+            pending.SetResult(Png(1, 1, [10, 20, 30, 255]));
+        }
+
+        await WaitForRevisionAsync(store, revision + 1);
+        Assert.True(screen.RenderRevision > revision);
+        var rendered = PlainText(screen.Render(viewport).Canvas);
+        Assert.DoesNotContain("loading…", rendered);
+        Assert.Contains(failed ? "Diagram — preview unavailable" : "▀", rendered);
+    }
+
+    [Fact]
+    public void Comments_ExternalAndMissingImagesShowAltText()
+    {
+        var (data, card) = DetailData();
+        var listCalls = 0;
+        using var store = new CardDescriptionImageStore(
+            _ =>
+            {
+                listCalls++;
+                return Task.FromResult(Attachments());
+            },
+            (_, _) => throw new InvalidOperationException("No thumbnail should be downloaded."));
+        var screen = new CardDetailScreen(data, card, "connected", store);
+        var viewport = new TerminalViewport(100, 24);
+        screen.HandleKey(new ConsoleKeyInfo('\0', ConsoleKey.RightArrow, false, false, false), viewport);
+        screen.ApplyComments([new CardComment(1, card.Id, 7,
+            "![External](https://example.test/tracker.png)", DateTime.UnixEpoch, "Luke", null)]);
+
+        Assert.Contains("External — preview unavailable", PlainText(screen.Render(viewport).Canvas));
+        Assert.Equal(0, listCalls);
+        screen.ApplyComments([new CardComment(1, card.Id, 7,
+            "![Missing](boardoil-attachment:missing.png)", DateTime.UnixEpoch, "Luke", null)]);
+        Assert.Contains("Missing — preview unavailable", PlainText(screen.Render(viewport).Canvas));
+        Assert.Equal(1, listCalls);
     }
 
     private static async Task WaitForRevisionAsync(CardDescriptionImageStore store, long revision)
