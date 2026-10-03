@@ -24,6 +24,8 @@ public sealed class AppOptionsTests
         Assert.Contains("BOARDOIL_URL", AppOptions.HelpText);
         Assert.Contains("BOARDOIL_BOARD_ID", AppOptions.HelpText);
         Assert.Contains("OILTTY_THEME", AppOptions.HelpText);
+        Assert.Contains("OILTTY_IMAGE_GLYPHS", AppOptions.HelpText);
+        Assert.Contains("--save-image-glyphs", AppOptions.HelpText);
         Assert.Contains("BOARDOIL_API_TOKEN", AppOptions.HelpText);
         Assert.Contains("BOARDOIL_USERNAME", AppOptions.HelpText);
         Assert.Contains("BOARDOIL_PASSWORD", AppOptions.HelpText);
@@ -105,4 +107,53 @@ public sealed class AppOptionsTests
 
         Assert.Equal("Theme must be 'light' or 'dark'.", exception.Message);
     }
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData(" ", null, null)]
+    [InlineData("sextants", null, 4)]
+    [InlineData("sextants", "halfblocks", 0)]
+    [InlineData("invalid", "quadrants,eighths", 3)]
+    public void Parse_ImageGlyphCommandLineOverridesEnvironment(string? environment, string? argument, int? expected)
+    {
+        var previous = Environment.GetEnvironmentVariable("OILTTY_IMAGE_GLYPHS");
+        try
+        {
+            Environment.SetEnvironmentVariable("OILTTY_IMAGE_GLYPHS", environment);
+            var options = AppOptions.Parse(argument is null ? [] : ["--image-glyphs", argument]);
+            Assert.Equal(expected is int value ? (ImageGlyphSets?)value : null, options.ImageGlyphs);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OILTTY_IMAGE_GLYPHS", previous);
+        }
+    }
+
+    [Fact]
+    public void Parse_SaveImageGlyphsDoesNotRequireValidConnectionSettings()
+    {
+        var names = new[] { "BOARDOIL_URL", "BOARDOIL_BOARD_ID", "OILTTY_THEME", "OILTTY_IMAGE_GLYPHS" };
+        var previous = names.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+        try
+        {
+            foreach (var name in names) Environment.SetEnvironmentVariable(name, "invalid");
+            var options = AppOptions.Parse(["--save-image-glyphs", "quadrants,eighths,sextants,vertical-eighths,diagonals"]);
+            Assert.Equal(ImageGlyphSets.All, options.SaveImageGlyphs);
+            Assert.Null(options.Server);
+            Assert.True(AppOptions.Parse(["--help"]).ShowHelp);
+        }
+        finally
+        {
+            foreach (var (name, value) in previous) Environment.SetEnvironmentVariable(name, value);
+        }
+    }
+
+    [Theory]
+    [InlineData("--image-glyphs")]
+    [InlineData("--save-image-glyphs")]
+    public void Parse_ImageGlyphOptionRequiresAValidValue(string option)
+    {
+        Assert.Throws<ArgumentException>(() => AppOptions.Parse([option]));
+        Assert.Throws<ArgumentException>(() => AppOptions.Parse([option, "octants"]));
+    }
+
 }

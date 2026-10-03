@@ -8,6 +8,10 @@ internal sealed record AppOptions(
     OilTTYTheme Theme,
     bool ShowHelp)
 {
+    public ImageGlyphSets? ImageGlyphs { get; init; }
+
+    public ImageGlyphSets? SaveImageGlyphs { get; init; }
+
     public const string HelpText = """
         Usage: OilTTY [options]
 
@@ -15,11 +19,19 @@ internal sealed record AppOptions(
           --server <url>         BoardOil server URL (BOARDOIL_URL)
           --board <id>           Initial board ID (BOARDOIL_BOARD_ID)
           --theme <dark|light>   Colour theme (OILTTY_THEME; default: dark)
+          --image-glyphs <sets>  Image character sets (OILTTY_IMAGE_GLYPHS)
+          --save-image-glyphs <sets>
+                                Save image character sets locally and exit
           --logout               Delete the saved session
           --no-session           Do not load or save a session
           --no-alt-screen        Do not use the alternate terminal screen
           --once                 Render once and exit
           -h, --help             Show this help
+
+        Image character sets:
+          Comma-separated quadrants, eighths, sextants, vertical-eighths, diagonals; halfblocks alone for baseline.
+          Half blocks are always available. Default: quadrants,eighths,sextants,vertical-eighths,diagonals.
+          Priority: command line, environment, saved settings, default.
 
         Authentication environment variables:
           BOARDOIL_API_TOKEN     API token for non-interactive authentication
@@ -33,6 +45,8 @@ internal sealed record AppOptions(
         var boardValue = Environment.GetEnvironmentVariable("BOARDOIL_BOARD_ID");
         var boardSource = "BOARDOIL_BOARD_ID";
         var themeValue = Environment.GetEnvironmentVariable("OILTTY_THEME");
+        var imageGlyphsValue = Environment.GetEnvironmentVariable("OILTTY_IMAGE_GLYPHS");
+        string? saveImageGlyphsValue = null;
         var once = false;
         var noAlternateScreen = false;
         var noSession = false;
@@ -50,6 +64,12 @@ internal sealed record AppOptions(
                 case "--board":
                     boardValue = ReadValue(arguments, ref index, argument);
                     boardSource = argument;
+                    break;
+                case "--image-glyphs":
+                    imageGlyphsValue = ReadValue(arguments, ref index, argument);
+                    break;
+                case "--save-image-glyphs":
+                    saveImageGlyphsValue = ReadValue(arguments, ref index, argument);
                     break;
                 case "--once":
                     once = true;
@@ -88,6 +108,14 @@ internal sealed record AppOptions(
                 true);
         }
 
+        if (saveImageGlyphsValue is not null)
+        {
+            return new AppOptions(null, 1, false, false, false, false, OilTTYTheme.Dark, false)
+            {
+                SaveImageGlyphs = ImageGlyphSettings.Parse(saveImageGlyphsValue)
+            };
+        }
+
         var server = string.IsNullOrWhiteSpace(serverValue) ? null : ParseServer(serverValue);
         var boardId = ParseBoardId(boardValue, boardSource);
         if (logout && noSession)
@@ -103,7 +131,10 @@ internal sealed record AppOptions(
             noSession,
             logout,
             ParseTheme(themeValue),
-            false);
+            false)
+        {
+            ImageGlyphs = string.IsNullOrWhiteSpace(imageGlyphsValue) ? null : ImageGlyphSettings.Parse(imageGlyphsValue)
+        };
     }
 
     private static string ReadValue(string[] arguments, ref int index, string option)

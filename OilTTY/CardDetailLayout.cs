@@ -360,7 +360,8 @@ internal sealed class CardDetailLayoutEngine
                 snapshot.Thumbnail.RenderLines(
                     width,
                     maximumImageRows,
-                    BoardStyles.PanelBackground),
+                    BoardStyles.PanelBackground,
+                    descriptionImages.GlyphSets),
             CardDescriptionThumbnailStatus.Loading =>
                 PlaceholderLines($"▧ {label} — loading…", width),
             _ => PlaceholderLines($"▧ {label} — preview unavailable", width)

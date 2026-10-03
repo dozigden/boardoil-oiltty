@@ -33,7 +33,8 @@ internal enum CardDetailCommand
     Quit,
     Save,
     LoadComments,
-    PostComment
+    PostComment,
+    ImageSettings
 }
 
 internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
@@ -213,6 +214,11 @@ internal sealed class CardDetailScreen : ITerminalScreen<CardDetailCommand>
         if (_confirmingDiscard)
         {
             return HandleDiscardConfirmationKey(key);
+        }
+
+        if (key.Key == ConsoleKey.F2)
+        {
+            return ScreenUpdate<CardDetailCommand>.Complete(CardDetailCommand.ImageSettings);
         }
 
         if (ActiveChoicePicker is not null)

@@ -2,6 +2,19 @@ using Xunit;
 
 public sealed class BoardScreenTests
 {
+    [Fact]
+    public void F2OpensSettingsUnlessMovingACard()
+    {
+        var screen = new BoardScreen(Data(TestBoardFactory.Column(1, TestBoardFactory.Card(10, 1))), "connected");
+        var open = screen.HandleKey(Key('\0', ConsoleKey.F2), Viewport);
+        Assert.True(open.IsComplete);
+        Assert.Equal(BoardCommand.ImageSettings, open.Result);
+        Assert.Equal(10, screen.SelectedCardId);
+        screen.HandleKey(Key(' ', ConsoleKey.Spacebar), Viewport);
+        Assert.False(screen.HandleKey(Key('\0', ConsoleKey.F2), Viewport).IsComplete);
+        Assert.Equal(10, screen.MovingCardId);
+    }
+
     [Theory]
     [InlineData(40)]
     [InlineData(80)]

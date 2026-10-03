@@ -976,6 +976,9 @@ internal sealed class CardDetailRenderer
             canvas.Put(49, canvas.Height - 1, "esc/q", BoardStyles.Selection, bold: true);
             canvas.Put(55, canvas.Height - 1, "board", BoardStyles.TextMuted);
         }
+
+        canvas.Put(62, canvas.Height - 1, "F2", BoardStyles.Selection, bold: true);
+        canvas.Put(65, canvas.Height - 1, "images", BoardStyles.TextMuted);
     }
 
     private static void DrawLines(

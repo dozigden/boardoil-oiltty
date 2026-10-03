@@ -24,6 +24,7 @@ internal static class BoardChromeRenderer
             }
             : new[]
             {
+                (Keys: "F2", Label: "images"),
                 (Keys: "j/k", Label: "card"),
                 (Keys: "h/l", Label: "column"),
                 (Keys: "space", Label: "move"),

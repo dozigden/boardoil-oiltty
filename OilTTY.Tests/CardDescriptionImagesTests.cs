@@ -4,6 +4,106 @@ using Xunit;
 
 public sealed class CardDescriptionImagesTests
 {
+    // Independent line equations in an 8×24 cell, following the named endpoints
+    // in Unicode U+1FB3C–U+1FB51. Opposite fills use the same edge.
+    private static readonly (int Slope, int Intercept)[] DiagonalLines =
+    [
+        (2, 16), (1, 16), (4, 8), (2, 8), (6, 0), (-2, 8), (-1, 8),
+        (-4, 16), (-2, 16), (-6, 24), (-1, 16), (-2, 32), (-1, 24),
+        (-4, 40), (-2, 24), (-6, 48), (2, -8), (1, 0), (4, -16),
+        (2, 0), (6, -24), (1, 8)
+    ];
+
+    public static IEnumerable<object[]> DiagonalPatterns => Enumerable.Range(0, 22)
+        .SelectMany(index => new[] { new object[] { index, false }, new object[] { index, true } });
+
+    [Theory]
+    [MemberData(nameof(DiagonalPatterns))]
+    public void Thumbnail_PreservesEverySmoothMosaicAndItsComplement(int shape, bool inverted)
+    {
+        var line = DiagonalLines[shape];
+        var pixels = Enumerable.Range(0, 8 * 24).SelectMany(index =>
+        {
+            var x = index % 8 + 0.5;
+            var y = index / 8 + 0.5;
+            var value = (byte)((y >= line.Slope * x + line.Intercept) != inverted ? 255 : 0);
+            return new byte[] { value, value, value, 255 };
+        }).ToArray();
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(8, 24, pixels));
+        var background = new Rgb(22, 29, 39);
+        var span = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1, background, ImageGlyphSets.Diagonals)).Spans);
+        Assert.Equal(char.ConvertFromUtf32(0x1FB3C + shape), span.Text);
+        Assert.Equal(1, UnicodeDisplay.TextWidth(span.Text));
+        Assert.Equal(1, UnicodeDisplay.TextWidth(char.ConvertFromUtf32(0x1FB52 + shape)));
+        for (var row = 0; row < 24; row++)
+        for (var column = 0; column < 8; column++)
+        {
+            var offset = (row * 8 + column) * 4;
+            Assert.Equal(new Rgb(pixels[offset], pixels[offset + 1], pixels[offset + 2]),
+                ImageCellColour(span, row, column, columns: 8));
+        }
+        var disabled = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1, background,
+            ImageGlyphSets.All & ~ImageGlyphSets.Diagonals)).Spans);
+        Assert.DoesNotContain(disabled.Text.EnumerateRunes(), rune => rune.Value is >= 0x1FB3C and <= 0x1FB67);
+    }
+
+    [Theory]
+    [InlineData(1, "▏")]
+    [InlineData(2, "▎")]
+    [InlineData(3, "▍")]
+    [InlineData(4, "▌")]
+    [InlineData(5, "▋")]
+    [InlineData(6, "▊")]
+    [InlineData(7, "▉")]
+    public void Thumbnail_PreservesVerticalEdgesWithOnlyVerticalEighthsEnabled(int eighths, string glyph)
+    {
+        foreach (var inverted in new[] { false, true })
+        {
+            var pixels = Enumerable.Range(0, 8 * 16).SelectMany(index =>
+            {
+                var value = (byte)((index % 8 < eighths) != inverted ? 255 : 0);
+                return new byte[] { value, value, value, 255 };
+            }).ToArray();
+            var thumbnail = CardDescriptionThumbnail.DecodePng(Png(8, 16, pixels));
+            var span = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1, new Rgb(22, 29, 39),
+                ImageGlyphSets.VerticalEighths)).Spans);
+            Assert.Equal(glyph, span.Text);
+            Assert.Equal(1, UnicodeDisplay.TextWidth(span.Text));
+            for (var row = 0; row < 24; row++)
+            for (var column = 0; column < 8; column++)
+            {
+                var expected = (byte)((column < eighths) != inverted ? 255 : 0);
+                Assert.Equal(new Rgb(expected, expected, expected), ImageCellColour(span, row, column, columns: 8));
+            }
+            var disabled = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1, new Rgb(22, 29, 39),
+                ImageGlyphSets.HalfBlocks)).Spans);
+            Assert.Equal("▀", disabled.Text);
+        }
+    }
+
+    [Fact]
+    public void StoreChangingGlyphsReusesLoadedImagesAndRequestsRedraw()
+    {
+        var downloads = 0;
+        using var store = new CardDescriptionImageStore(
+            _ => Task.FromResult(Attachments(new CardAttachment(7, "diagram.png", "image/png", 10, DateTime.UnixEpoch, null, true))),
+            (_, _) => { downloads++; return Task.FromResult(Png(1, 1, [10, 20, 30, 255])); },
+            ImageGlyphSets.HalfBlocks);
+        Assert.Null(store.LoadedPreview());
+        Assert.Equal(0, downloads);
+        var image = store.Get("diagram.png").Thumbnail;
+        Assert.NotNull(image);
+        Assert.Same(image, store.LoadedPreview());
+        var revision = store.Revision;
+        store.SetGlyphSets(ImageGlyphSets.All);
+        Assert.Equal(revision + 1, store.Revision);
+        Assert.Equal(ImageGlyphSets.All, store.GlyphSets);
+        Assert.Same(image, store.Get("diagram.png").Thumbnail);
+        Assert.Equal(1, downloads);
+        store.SetGlyphSets(ImageGlyphSets.All);
+        Assert.Equal(revision + 1, store.Revision);
+    }
+
     [Fact]
     public void Markdown_ParsesCanonicalPercentEncodedAttachmentReference()
     {
@@ -160,10 +260,10 @@ public sealed class CardDescriptionImagesTests
     [Fact]
     public void Thumbnail_DownsamplesByAveragingSourceColours()
     {
-        // Each sample averages an 8×4 source region containing all four colours.
+        // Each sample averages a 24×4 source region containing all four colours.
         byte[][] colours = [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255], [255, 255, 255, 255]];
-        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(16, 16,
-            Enumerable.Range(0, 256).SelectMany(index => colours[((index / 16) % 2) * 2 + index % 2]).ToArray()));
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(48, 48,
+            Enumerable.Range(0, 48 * 48).SelectMany(index => colours[((index / 48) % 2) * 2 + index % 2]).ToArray()));
 
         var span = Assert.Single(Assert.Single(
             thumbnail.RenderLines(1, 1, new Rgb(0, 0, 0))).Spans);
@@ -230,10 +330,222 @@ public sealed class CardDescriptionImagesTests
         }
     }
 
+    // Sextant names in Unicode code-point order, independently describing their shapes.
+    private const string SextantSections =
+        "1 2 12 3 13 23 123 4 14 24 124 34 134 234 1234 5 15 25 125 35 235 1235 45 145 245 1245 345 1345 2345 12345 6 16 26 126 36 136 236 1236 46 146 1246 346 1346 2346 12346 56 156 256 1256 356 1356 2356 12356 456 1456 2456 12456 3456 13456 23456";
+
+    public static TheoryData<int, string> SextantPatterns
+    {
+        get
+        {
+            var patterns = new TheoryData<int, string>();
+            var codePoint = 0x1FB00;
+            foreach (var sections in SextantSections.Split(' '))
+            {
+                var mask = sections.Aggregate(0, (value, digit) => value | (1 << (digit - '1')));
+                patterns.Add(mask, char.ConvertFromUtf32(codePoint++));
+            }
+            return patterns;
+        }
+    }
+
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Detail_UsesQuadrantsInDescriptionsAndComments(bool inComment)
+    [MemberData(nameof(SextantPatterns))]
+    public void Thumbnail_PreservesEverySextantPattern(int mask, string originalGlyph)
+    {
+        var pixels = Enumerable.Range(0, 8 * 48).SelectMany(index =>
+        {
+            var part = (index % 8) / 4 + ((index / 8) / 16) * 2;
+            var value = (byte)((mask & (1 << part)) != 0 ? 255 : 0);
+            return new byte[] { value, value, value, 255 };
+        }).ToArray();
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(8, 48, pixels));
+        var span = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1, new Rgb(22, 29, 39), ImageGlyphSets.All)).Spans);
+        var scalar = Assert.Single(span.Text.EnumerateRunes()).Value;
+        Assert.InRange(scalar, 0x1FB00, 0x1FB3B);
+        Assert.Equal(1, UnicodeDisplay.TextWidth(span.Text));
+        Assert.Equal(1, UnicodeDisplay.TextWidth(originalGlyph));
+
+        for (var row = 0; row < 24; row++)
+        for (var column = 0; column < 2; column++)
+        {
+            var expected = (mask & (1 << ((row / 8) * 2 + column))) != 0 ? (byte)255 : (byte)0;
+            Assert.Equal(new Rgb(expected, expected, expected), ImageCellColour(span, row, column));
+        }
+    }
+
+    [Theory]
+    [InlineData(22, 29, 39)]
+    [InlineData(237, 242, 250)]
+    public void Thumbnail_AllGlyphFittingPreservesPartialRowPadding(byte red, byte green, byte blue)
+    {
+        var background = new Rgb(red, green, blue);
+        var pixels = Enumerable.Range(0, 24 * 72).SelectMany(index =>
+            new byte[] { (byte)((index * 37) % 256), (byte)((index * 73) % 256), (byte)((index * 11) % 256), 255 }).ToArray();
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(24, 72, pixels));
+        var lines = thumbnail.RenderLines(1, 2, background, ImageGlyphSets.All);
+        Assert.Equal(2, lines.Count);
+        Assert.All(lines[^1].Spans, span =>
+        {
+            for (var row = 12; row < 24; row++)
+            for (var column = 0; column < 8; column++)
+                Assert.Equal(background, ImageCellColour(span, row, column, columns: 8));
+        });
+    }
+
+    [Theory]
+    [InlineData(17)]
+    [InlineData(83)]
+    [InlineData(251)]
+    public void Thumbnail_ChoosesMinimumErrorShapeForMixedColours(int seed)
+    {
+        var random = new Random(seed);
+        var samples = Enumerable.Range(0, 192)
+            .Select(_ => new Rgb((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256))).ToArray();
+        var pixels = Enumerable.Range(0, 24 * 48).SelectMany(index =>
+        {
+            var pixel = samples[(index / 24 / 2) * 8 + (index % 24 / 3)];
+            return new byte[] { pixel.Red, pixel.Green, pixel.Blue, 255 };
+        }).ToArray();
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(24, 48, pixels));
+        var actual = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1, new Rgb(22, 29, 39), ImageGlyphSets.All)).Spans);
+        var white = new Rgb(255, 255, 255);
+        var black = new Rgb(0, 0, 0);
+        var glyphs = new[] { "▀", "▘", "▝", "▖", "▌", "▞", "▛", "▁", "▂", "▃", "▅", "▆", "▇", "▏", "▎", "▍", "▋", "▊", "▉" }
+            .Concat(Enumerable.Range(0x1FB00, 60).Select(char.ConvertFromUtf32))
+            .Concat(Enumerable.Range(0x1FB3C, 22).Select(char.ConvertFromUtf32));
+        var minimumError = glyphs.Min(glyph =>
+        {
+            var shape = new CardDetailSpan(glyph, white, black);
+            var groups = Enumerable.Range(0, 192).GroupBy(index =>
+                ImageCellColour(shape, index / 8, index % 8, columns: 8) == white);
+            return groups.Sum(group =>
+            {
+                var colours = group.Select(index => samples[index]).ToArray();
+                var mean = new Rgb((byte)Math.Round(colours.Average(colour => colour.Red)),
+                    (byte)Math.Round(colours.Average(colour => colour.Green)),
+                    (byte)Math.Round(colours.Average(colour => colour.Blue)));
+                return colours.Sum(colour => SquaredDistance(colour, mean));
+            });
+        });
+        var actualError = Enumerable.Range(0, 192).Sum(index =>
+            SquaredDistance(samples[index], ImageCellColour(actual, index / 8, index % 8, columns: 8)!.Value));
+        Assert.Equal(minimumError, actualError);
+    }
+
+    private static long SquaredDistance(Rgb left, Rgb right) =>
+        (long)(left.Red - right.Red) * (left.Red - right.Red)
+        + (long)(left.Green - right.Green) * (left.Green - right.Green)
+        + (long)(left.Blue - right.Blue) * (left.Blue - right.Blue);
+
+    private static Rgb? ImageCellColour(CardDetailSpan span, int row, int column, int columns = 2)
+    {
+        var scalar = Assert.Single(span.Text.EnumerateRunes()).Value;
+        column = column * 8 / columns;
+        bool foreground;
+        if (scalar is >= 0x1FB00 and <= 0x1FB3B)
+        {
+            var sections = SextantSections.Split(' ')[scalar - 0x1FB00];
+            foreground = sections.Contains((char)('1' + (row / 8) * 2 + column / 4));
+        }
+        else if (scalar is >= 0x2581 and <= 0x2587)
+        {
+            foreground = row >= (8 - (scalar - 0x2580)) * 3;
+        }
+        else if (scalar is >= 0x2589 and <= 0x258F)
+        {
+            foreground = column < 0x2590 - scalar;
+        }
+        else if (scalar is >= 0x1FB3C and <= 0x1FB51)
+        {
+            var line = DiagonalLines[scalar - 0x1FB3C];
+            foreground = row + 0.5 >= line.Slope * (column + 0.5) + line.Intercept;
+        }
+        else
+        {
+            var mask = span.Text switch
+            {
+                "▀" => 3, "▘" => 1, "▝" => 2, "▖" => 4, "▌" => 5, "▞" => 6, "▛" => 7,
+                _ => throw new InvalidOperationException($"Unexpected image character {span.Text}")
+            };
+            foreground = (mask & (1 << ((row / 12) * 2 + column / 4))) != 0;
+        }
+        return foreground ? span.Foreground : span.Background;
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
+    [InlineData(15)]
+    [InlineData(16)]
+    [InlineData(17)]
+    [InlineData(18)]
+    [InlineData(19)]
+    [InlineData(20)]
+    [InlineData(21)]
+    [InlineData(22)]
+    [InlineData(23)]
+    [InlineData(24)]
+    [InlineData(25)]
+    [InlineData(26)]
+    [InlineData(27)]
+    [InlineData(28)]
+    [InlineData(29)]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void Thumbnail_UsesOnlyEnabledSetsAndSeparatesCachedVariants(int selected)
+    {
+        var sets = (ImageGlyphSets)selected;
+        var random = new Random(83);
+        var rgba = Enumerable.Range(0, 96 * 96).SelectMany(_ =>
+            new byte[] { (byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256), 255 }).ToArray();
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(96, 96, rgba));
+        var background = new Rgb(22, 29, 39);
+        var all = thumbnail.RenderLines(30, 18, background, ImageGlyphSets.All);
+        var lines = thumbnail.RenderLines(30, 18, background, sets);
+        Assert.Same(lines, thumbnail.RenderLines(30, 18, background, sets));
+        if (sets != ImageGlyphSets.All) Assert.NotSame(all, lines);
+        foreach (var span in lines.SelectMany(line => line.Spans))
+        {
+            if (string.IsNullOrWhiteSpace(span.Text) || span.Text == "▀") continue;
+            var scalar = Assert.Single(span.Text.EnumerateRunes()).Value;
+            if (span.Text == "▌")
+            {
+                Assert.NotEqual(ImageGlyphSets.HalfBlocks, sets & (ImageGlyphSets.Quadrants | ImageGlyphSets.VerticalEighths));
+                continue;
+            }
+            var family = scalar switch
+            {
+                >= 0x1FB00 and <= 0x1FB3B => ImageGlyphSets.Sextants,
+                >= 0x2581 and <= 0x2587 => ImageGlyphSets.Eighths,
+                >= 0x2589 and <= 0x258F => ImageGlyphSets.VerticalEighths,
+                >= 0x1FB3C and <= 0x1FB67 => ImageGlyphSets.Diagonals,
+                _ when "▘▝▖▌▞▛".Contains(span.Text, StringComparison.Ordinal) => ImageGlyphSets.Quadrants,
+                _ => throw new InvalidOperationException($"Unexpected glyph {span.Text}")
+            };
+            Assert.True(sets.HasFlag(family), $"Disabled family {family} emitted {span.Text}.");
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Detail_UsesConfiguredGlyphsInDescriptionsAndComments(bool inComment, bool quadrants)
     {
         var (data, sourceCard) = DetailData();
         const string markdown = "![Stripes](boardoil-attachment:stripes.png)";
@@ -246,13 +558,22 @@ public sealed class CardDescriptionImagesTests
         using var store = new CardDescriptionImageStore(
             _ => Task.FromResult(Attachments(new CardAttachment(7, "stripes.png", "image/png", 10,
                 DateTime.UnixEpoch, null, true))),
-            (_, _) => Task.FromResult(Png(width, 4, pixels)));
+            (_, _) => Task.FromResult(Png(width, 4, pixels)),
+            quadrants ? ImageGlyphSets.Quadrants : ImageGlyphSets.HalfBlocks);
         var layout = new CardDetailLayoutEngine().Create(data, card, 80, 40,
             comments: inComment ? [new CardComment(1, card.Id, 7, markdown, DateTime.UnixEpoch, "Luke", null)] : [],
             descriptionImages: store);
         var lines = inComment ? layout.CommentLines : layout.DescriptionLines;
-        Assert.Contains(lines.SelectMany(line => line.Spans), span => span.Text == "▌"
-            && span.Foreground == new Rgb(0, 0, 0) && span.Background == new Rgb(255, 0, 0));
+        if (quadrants)
+        {
+            Assert.Contains(lines.SelectMany(line => line.Spans), span => span.Text == "▌"
+                && span.Foreground == new Rgb(0, 0, 0) && span.Background == new Rgb(255, 0, 0));
+        }
+        else
+        {
+            Assert.Contains(lines.SelectMany(line => line.Spans), span => span.Text == "▀");
+            Assert.DoesNotContain(lines.SelectMany(line => line.Spans), span => span.Text == "▌");
+        }
     }
 
     [Fact]

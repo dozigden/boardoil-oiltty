@@ -60,7 +60,7 @@ internal sealed class ServerStore
         }
     }
 
-    private static string ResolveConfigurationRoot()
+    internal static string ResolveConfigurationRoot()
     {
         var xdgConfigurationHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
         if (!string.IsNullOrWhiteSpace(xdgConfigurationHome))

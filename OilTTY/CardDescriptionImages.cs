@@ -186,20 +186,40 @@ internal sealed class CardDescriptionImageStore : IDisposable
     private long _revision;
     private bool _disposed;
 
-    public CardDescriptionImageStore(BoardOilClient client, int boardId, int cardId)
+    public CardDescriptionImageStore(
+        BoardOilClient client, int boardId, int cardId, ImageGlyphSets glyphSets = ImageGlyphSets.Default)
         : this(
             cancellationToken => client.LoadCardAttachmentsAsync(boardId, cardId, cancellationToken),
             (attachmentId, cancellationToken) =>
-                client.LoadAttachmentThumbnailAsync(boardId, attachmentId, cancellationToken))
+                client.LoadAttachmentThumbnailAsync(boardId, attachmentId, cancellationToken), glyphSets)
     {
     }
 
     internal CardDescriptionImageStore(
         Func<CancellationToken, Task<CardAttachmentList>> loadAttachments,
-        Func<int, CancellationToken, Task<byte[]>> loadThumbnail)
+        Func<int, CancellationToken, Task<byte[]>> loadThumbnail,
+        ImageGlyphSets glyphSets = ImageGlyphSets.Default)
     {
+        GlyphSets = glyphSets;
         _loadAttachments = loadAttachments;
         _loadThumbnail = loadThumbnail;
+    }
+
+    public ImageGlyphSets GlyphSets { get; private set; }
+
+    public void SetGlyphSets(ImageGlyphSets glyphSets)
+    {
+        if (GlyphSets == glyphSets) return;
+        GlyphSets = glyphSets;
+        Interlocked.Increment(ref _revision);
+    }
+
+    public CardDescriptionThumbnail? LoadedPreview()
+    {
+        lock (_gate)
+        {
+            return _states.Values.FirstOrDefault(state => state.Status == CardDescriptionThumbnailStatus.Ready)?.Thumbnail;
+        }
     }
 
     public long Revision => Interlocked.Read(ref _revision);
@@ -324,11 +344,15 @@ internal sealed class CardDescriptionThumbnail
 {
     private const int MaximumEdgeLength = 200;
     private const int MaximumRenderedVariants = 8;
+    // 24 divides evenly into halves, thirds, and eighths.
+    private const int SamplesPerCellRow = 24;
+    private const int SamplesPerCellColumn = 8;
+    private const int SamplesPerCell = SamplesPerCellRow * SamplesPerCellColumn;
     private readonly byte[] _rgba;
     private readonly Dictionary<RenderKey, IReadOnlyList<CardDetailLine>> _renderCache = [];
     private readonly object _renderGate = new();
 
-    private CardDescriptionThumbnail(int width, int height, byte[] rgba)
+    internal CardDescriptionThumbnail(int width, int height, byte[] rgba)
     {
         Width = width;
         Height = height;
@@ -371,9 +395,10 @@ internal sealed class CardDescriptionThumbnail
     public IReadOnlyList<CardDetailLine> RenderLines(
         int maximumColumns,
         int maximumRows,
-        Rgb background)
+        Rgb background,
+        ImageGlyphSets glyphSets = ImageGlyphSets.Default)
     {
-        var key = new RenderKey(maximumColumns, maximumRows, background);
+        var key = new RenderKey(maximumColumns, maximumRows, background, glyphSets);
         lock (_renderGate)
         {
             if (_renderCache.TryGetValue(key, out var cached))
@@ -382,7 +407,7 @@ internal sealed class CardDescriptionThumbnail
             }
         }
 
-        var rendered = RenderLinesCore(maximumColumns, maximumRows, background);
+        var rendered = RenderLinesCore(maximumColumns, maximumRows, background, glyphSets);
         lock (_renderGate)
         {
             if (_renderCache.Count >= MaximumRenderedVariants)
@@ -399,7 +424,8 @@ internal sealed class CardDescriptionThumbnail
     private IReadOnlyList<CardDetailLine> RenderLinesCore(
         int maximumColumns,
         int maximumRows,
-        Rgb background)
+        Rgb background,
+        ImageGlyphSets glyphSets)
     {
         maximumColumns = Math.Max(1, maximumColumns);
         maximumRows = Math.Max(1, maximumRows);
@@ -408,12 +434,12 @@ internal sealed class CardDescriptionThumbnail
             Math.Min(maximumColumns / (double)Width, maximumRows * 2d / Height));
         var pixelWidth = Math.Clamp((int)Math.Round(Width * scale), 1, maximumColumns);
         var pixelHeight = Math.Clamp((int)Math.Round(Height * scale), 1, maximumRows * 2);
-        // Keep the existing physical size, sampling a 2×8 grid per cell so both
-        // quadrant shapes and eighth-height horizontal edges use the same evidence.
-        var sampleWidth = pixelWidth * 2;
-        var sampleHeight = pixelHeight * 4;
+        // Keep the existing physical size. An 8×24 sample grid represents quadrant,
+        // sextant, and both eighth-block directions exactly.
+        var sampleWidth = pixelWidth * SamplesPerCellColumn;
+        var sampleHeight = pixelHeight * (SamplesPerCellRow / 2);
         var pixels = Resize(sampleWidth, sampleHeight, background);
-        Span<Rgb> cellPixels = stackalloc Rgb[16];
+        Span<Rgb> cellPixels = stackalloc Rgb[SamplesPerCell];
         var leftPadding = Math.Max(0, (maximumColumns - pixelWidth) / 2);
         var lines = new List<CardDetailLine>((pixelHeight + 1) / 2);
         for (var sourceY = 0; sourceY < pixelHeight; sourceY += 2)
@@ -426,15 +452,16 @@ internal sealed class CardDescriptionThumbnail
 
             for (var x = 0; x < pixelWidth; x++)
             {
-                for (var row = 0; row < 8; row++)
+                for (var row = 0; row < SamplesPerCellRow; row++)
                 {
-                    var sampleY = (sourceY * 4) + row;
-                    var offset = (sampleY * sampleWidth) + (x * 2);
+                    var sampleY = (sourceY * (SamplesPerCellRow / 2)) + row;
+                    var offset = (sampleY * sampleWidth) + (x * SamplesPerCellColumn);
                     // An odd final half-row retains the pane background below it.
-                    cellPixels[row * 2] = sampleY < sampleHeight ? pixels[offset] : background;
-                    cellPixels[(row * 2) + 1] = sampleY < sampleHeight ? pixels[offset + 1] : background;
+                    for (var column = 0; column < SamplesPerCellColumn; column++)
+                        cellPixels[row * SamplesPerCellColumn + column] = sampleY < sampleHeight
+                            ? pixels[offset + column] : background;
                 }
-                spans.Add(FitImageCell(cellPixels, sourceY + 1 < pixelHeight ? null : background));
+                spans.Add(FitImageCell(cellPixels, sourceY + 1 < pixelHeight ? null : background, glyphSets));
             }
 
             lines.Add(new CardDetailLine(spans));
@@ -443,64 +470,126 @@ internal sealed class CardDescriptionThumbnail
         return lines;
     }
 
-    private static readonly (string Glyph, int Mask)[] ImageGlyphs = CreateImageGlyphs();
+    private static readonly ImageGlyph[] ImageGlyphs = CreateImageGlyphs();
 
-    private static (string Glyph, int Mask)[] CreateImageGlyphs()
+    private static ImageGlyph[] CreateImageGlyphs()
     {
-        var glyphs = new List<(string, int)>();
+        var glyphs = new List<ImageGlyph>();
+        void Add(string text, ImageGlyphSets set, Func<int, int, bool> covers)
+        {
+            var indices = Enumerable.Range(0, SamplesPerCell)
+                .Where(index => covers(index / SamplesPerCellColumn, index % SamplesPerCellColumn)).ToArray();
+            var paddingCount = indices.Count(index => index >= SamplesPerCell / 2);
+            glyphs.Add(new ImageGlyph(text, set, indices, paddingCount));
+        }
+        void AddParts(string text, ImageGlyphSets set, int mask, int rows) =>
+            Add(text, set, (row, column) =>
+                (mask & (1 << ((row / (SamplesPerCellRow / rows)) * 2 + column / 4))) != 0);
+
         string[] quadrants = [" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛"];
         // Complementary masks have the same fit with swapped colours. Prefer the
         // existing shapes on ties, especially the half block for flat colours.
         foreach (var mask in new[] { 3, 1, 2, 4, 5, 6, 7 })
-        {
-            var expanded = 0;
-            for (var row = 0; row < 8; row++)
-            {
-                var quadrantRow = row < 4 ? 0 : 2;
-                for (var column = 0; column < 2; column++)
-                {
-                    if ((mask & (1 << (quadrantRow + column))) != 0)
-                    {
-                        expanded |= 1 << ((row * 2) + column);
-                    }
-                }
-            }
-            glyphs.Add((quadrants[mask], expanded));
-        }
+            AddParts(quadrants[mask], mask == 3 ? ImageGlyphSets.HalfBlocks : ImageGlyphSets.Quadrants, mask, 2);
 
         string[] lowerBlocks = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇"];
         for (var eighths = 1; eighths < 8; eighths++)
         {
             if (eighths != 4) // Already represented by the upper half block.
-            {
-                glyphs.Add((lowerBlocks[eighths], (0xffff << ((8 - eighths) * 2)) & 0xffff));
-            }
+                Add(lowerBlocks[eighths], ImageGlyphSets.Eighths,
+                    (row, _) => row >= (8 - eighths) * (SamplesPerCellRow / 8));
+        }
+        // Unicode U+1FB00–U+1FB3B enumerates non-empty sextant masks, omitting
+        // the existing left/right half blocks (21/42) and full block (63).
+        var codePoint = 0x1FB00;
+        for (var mask = 1; mask < 32; mask++)
+        {
+            if (mask == 21) continue;
+            AddParts(char.ConvertFromUtf32(codePoint++), ImageGlyphSets.Sextants, mask, 3);
+        }
+        string[] leftBlocks = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+        for (var eighths = 1; eighths < 8; eighths++)
+        {
+            // Include the half even when quadrants are disabled.
+            Add(leftBlocks[eighths], ImageGlyphSets.VerticalEighths, (_, column) => column < eighths);
+        }
+        // Unicode smooth mosaics U+1FB3C–U+1FB51 use endpoints on the cell
+        // boundary. X is in halves, Y in thirds, matching their Unicode names.
+        // Unlike geometric triangles, these are terminal block graphics.
+        (int X1, int Y1, int X2, int Y2)[] diagonalEdges =
+        [
+            (0, 2, 1, 3), (0, 2, 2, 3), (0, 1, 1, 3), (0, 1, 2, 3),
+            (0, 0, 1, 3), (0, 1, 1, 0), (0, 1, 2, 0), (0, 2, 1, 0),
+            (0, 2, 2, 0), (0, 3, 1, 0), (0, 2, 2, 1), (1, 3, 2, 2),
+            (0, 3, 2, 2), (1, 3, 2, 1), (0, 3, 2, 1), (1, 3, 2, 0),
+            (1, 0, 2, 1), (0, 0, 2, 1), (1, 0, 2, 2), (0, 0, 2, 2),
+            (1, 0, 2, 3), (0, 1, 2, 2)
+        ];
+        for (var index = 0; index < diagonalEdges.Length; index++)
+        {
+            var edge = diagonalEdges[index];
+            var x1 = edge.X1 * SamplesPerCellColumn;
+            var y1 = edge.Y1 * (SamplesPerCellRow * 2 / 3);
+            var dx = (edge.X2 - edge.X1) * SamplesPerCellColumn;
+            var dy = (edge.Y2 - edge.Y1) * (SamplesPerCellRow * 2 / 3);
+            // Filled below the line; swapped colours cover U+1FB52–U+1FB67.
+            // Doubled coordinates keep sample-centre comparisons integral.
+            Add(char.ConvertFromUtf32(0x1FB3C + index), ImageGlyphSets.Diagonals,
+                (row, column) => (2 * row + 1 - y1) * dx >= (2 * column + 1 - x1) * dy);
         }
         return glyphs.ToArray();
     }
 
-    private static CardDetailSpan FitImageCell(ReadOnlySpan<Rgb> pixels, Rgb? bottomPadding)
+    private sealed record ImageGlyph(string Text, ImageGlyphSets Set, int[] ForegroundSamples, int PaddingCount);
+
+    private static CardDetailSpan FitImageCell(ReadOnlySpan<Rgb> pixels, Rgb? bottomPadding, ImageGlyphSets glyphSets)
     {
-        var bestError = long.MaxValue;
-        var result = new CardDetailSpan("▀", pixels[0], pixels[8]);
-        foreach (var (glyph, mask) in ImageGlyphs)
+        var totalRed = 0;
+        var totalGreen = 0;
+        var totalBlue = 0;
+        foreach (var pixel in pixels)
         {
-            const int lowerHalfMask = 0xff00;
-            var coveredPadding = mask & lowerHalfMask;
-            if (bottomPadding is not null && coveredPadding != 0 && coveredPadding != lowerHalfMask)
+            totalRed += pixel.Red;
+            totalGreen += pixel.Green;
+            totalBlue += pixel.Blue;
+        }
+
+        var bestError = long.MaxValue;
+        var bestGlyph = "▀";
+        var bestForeground = pixels[0];
+        var bestBackground = pixels[SamplesPerCell / 2];
+        foreach (var glyph in ImageGlyphs)
+        {
+            if (glyph.Set != ImageGlyphSets.HalfBlocks && (glyphSets & glyph.Set) == 0)
+            {
+                continue;
+            }
+            var coveredPadding = glyph.PaddingCount;
+            if (bottomPadding is not null && coveredPadding != 0 && coveredPadding != SamplesPerCell / 2)
             {
                 // Splitting the padding would force both colours to the pane background,
                 // leaving no colour available to represent the image above it.
                 continue;
             }
 
-            var foreground = AverageSamples(pixels, mask, true);
-            var background = AverageSamples(pixels, mask, false);
+            var red = 0;
+            var green = 0;
+            var blue = 0;
+            foreach (var index in glyph.ForegroundSamples)
+            {
+                red += pixels[index].Red;
+                green += pixels[index].Green;
+                blue += pixels[index].Blue;
+            }
+            var count = glyph.ForegroundSamples.Length;
+            var backgroundCount = pixels.Length - count;
+            var foreground = AverageColour(red, green, blue, count);
+            var background = AverageColour(totalRed - red, totalGreen - green, totalBlue - blue, backgroundCount);
             if (bottomPadding is Rgb padding)
             {
                 // Padding is outside the image, so its colour must be exact rather than
                 // averaged with image samples that share this part of the glyph.
-                if (coveredPadding == lowerHalfMask)
+                if (coveredPadding == SamplesPerCell / 2)
                 {
                     foreground = padding;
                 }
@@ -509,48 +598,30 @@ internal sealed class CardDescriptionThumbnail
                     background = padding;
                 }
             }
-            var error = 0L;
-            for (var index = 0; index < pixels.Length; index++)
-            {
-                var colour = (mask & (1 << index)) != 0 ? foreground : background;
-                var red = pixels[index].Red - colour.Red;
-                var green = pixels[index].Green - colour.Green;
-                var blue = pixels[index].Blue - colour.Blue;
-                error += (red * red) + (green * green) + (blue * blue);
-            }
 
+            // The sum of squared source samples is common to every candidate and
+            // cancels when comparing errors. Colour sums avoid rescanning each group.
+            var error = ColourError(foreground, red, green, blue, count)
+                + ColourError(background, totalRed - red, totalGreen - green, totalBlue - blue, backgroundCount);
             if (error < bestError)
             {
                 bestError = error;
-                result = new CardDetailSpan(glyph, foreground, background);
+                bestGlyph = glyph.Text;
+                bestForeground = foreground;
+                bestBackground = background;
             }
         }
 
-        return result;
+        return new CardDetailSpan(bestGlyph, bestForeground, bestBackground);
     }
 
-    private static Rgb AverageSamples(ReadOnlySpan<Rgb> pixels, int mask, bool selected)
-    {
-        var red = 0;
-        var green = 0;
-        var blue = 0;
-        var count = 0;
-        for (var index = 0; index < pixels.Length; index++)
-        {
-            if (((mask & (1 << index)) != 0) != selected)
-            {
-                continue;
-            }
+    private static Rgb AverageColour(int red, int green, int blue, int count) =>
+        new((byte)Math.Round(red / (double)count), (byte)Math.Round(green / (double)count),
+            (byte)Math.Round(blue / (double)count));
 
-            red += pixels[index].Red;
-            green += pixels[index].Green;
-            blue += pixels[index].Blue;
-            count++;
-        }
-
-        return new Rgb((byte)Math.Round(red / (double)count),
-            (byte)Math.Round(green / (double)count), (byte)Math.Round(blue / (double)count));
-    }
+    private static long ColourError(Rgb colour, int red, int green, int blue, int count) =>
+        (long)count * ((colour.Red * colour.Red) + (colour.Green * colour.Green) + (colour.Blue * colour.Blue))
+        - 2L * ((colour.Red * red) + (colour.Green * green) + (colour.Blue * blue));
 
     private Rgb[] Resize(int targetWidth, int targetHeight, Rgb background)
     {
@@ -616,5 +687,5 @@ internal sealed class CardDescriptionThumbnail
         return (byte)Math.Round(component * 255);
     }
 
-    private readonly record struct RenderKey(int MaximumColumns, int MaximumRows, Rgb Background);
+    private readonly record struct RenderKey(int MaximumColumns, int MaximumRows, Rgb Background, ImageGlyphSets GlyphSets);
 }

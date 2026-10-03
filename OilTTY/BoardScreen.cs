@@ -5,7 +5,8 @@ internal enum BoardCommand
     PickBoard,
     OpenCard,
     CreateCard,
-    MoveCard
+    MoveCard,
+    ImageSettings
 }
 
 internal sealed class BoardScreen : ITerminalScreen<BoardCommand>
@@ -145,6 +146,12 @@ internal sealed class BoardScreen : ITerminalScreen<BoardCommand>
         if (_movingCardId is not null)
         {
             return ScreenUpdate<BoardCommand>.Continue(redraw: false);
+        }
+
+        if (key.Key == ConsoleKey.F2)
+        {
+            RememberViewport(viewport);
+            return ScreenUpdate<BoardCommand>.Complete(BoardCommand.ImageSettings);
         }
 
         if (key.Key == ConsoleKey.R)

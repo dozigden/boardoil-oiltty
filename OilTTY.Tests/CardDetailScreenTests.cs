@@ -4,6 +4,27 @@ using Xunit;
 
 public sealed class CardDetailScreenTests
 {
+    [Fact]
+    public void F2PreservesAnActiveEditorAndItsUnsavedText()
+    {
+        var (data, card) = DetailData();
+        var screen = new CardDetailScreen(data, card, "connected");
+        var viewport = new TerminalViewport(80, 24);
+        FocusField(screen, CardDetailField.Title, viewport);
+        screen.HandleKey(Key(ConsoleKey.Enter, '\r'), viewport);
+        screen.HandleKey(Key(ConsoleKey.End), viewport);
+        screen.HandleKey(Key(ConsoleKey.X, 'x'), viewport);
+        var before = screen.Render(viewport);
+        var open = screen.HandleKey(Key(ConsoleKey.F2), viewport);
+        Assert.True(open.IsComplete);
+        Assert.Equal(CardDetailCommand.ImageSettings, open.Result);
+        Assert.True(screen.IsEditing);
+        Assert.Equal(before.Cursor, screen.Render(viewport).Cursor);
+        Assert.Equal(PlainText(before.Canvas), PlainText(screen.Render(viewport).Canvas));
+        screen.HandleKey(Key(ConsoleKey.Escape), viewport);
+        Assert.Equal(card.Title + "x", screen.Title);
+    }
+
     [Theory]
     [InlineData(40)]
     [InlineData(80)]

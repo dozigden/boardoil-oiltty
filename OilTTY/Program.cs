@@ -11,6 +11,14 @@ try
         return 0;
     }
 
+    var settingsStore = new SettingsStore();
+    if (options.SaveImageGlyphs is ImageGlyphSets savedGlyphs)
+    {
+        await settingsStore.SaveImageGlyphsAsync(savedGlyphs);
+        Console.WriteLine($"Saved image glyphs: {ImageGlyphSettings.Format(savedGlyphs)} ({TerminalText.NeutraliseControls(settingsStore.FilePath)})");
+        return 0;
+    }
+
     BoardStyles.UseTheme(options.Theme);
     var serverStore = new ServerStore();
     options = options with { Server = options.Server ?? await serverStore.LoadAsync() };
@@ -19,6 +27,8 @@ try
         Console.WriteLine(await BoardOilClient.LogoutStoredSessionAsync(options));
         return 0;
     }
+
+    options = options with { ImageGlyphs = await settingsStore.ResolveImageGlyphsAsync(options.ImageGlyphs) };
 
     var interactive = !options.Once && !Console.IsInputRedirected && !Console.IsOutputRedirected;
     using var terminal = interactive ? new TerminalSession(options.NoAlternateScreen) : null;
@@ -30,7 +40,7 @@ try
         options,
         loginApplication is null ? null : loginApplication.PromptAsync,
         serverStore);
-    var app = new TerminalApplication(client, options, terminalRuntime);
+    var app = new TerminalApplication(client, options, terminalRuntime, settingsStore);
     return await app.RunAsync();
 }
 catch (OperationCanceledException)

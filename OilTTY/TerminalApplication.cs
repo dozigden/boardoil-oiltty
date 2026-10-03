@@ -1,11 +1,14 @@
 internal sealed class TerminalApplication(
     BoardOilClient client,
     AppOptions options,
-    TerminalRuntime? terminal)
+    TerminalRuntime? terminal,
+    SettingsStore? settingsStore = null)
 {
     private readonly BoardOilClient _client = client;
     private readonly AppOptions _options = options;
     private readonly TerminalRuntime? _terminal = terminal;
+    private readonly SettingsStore _settingsStore = settingsStore ?? new SettingsStore();
+    private ImageGlyphSets _imageGlyphs = options.ImageGlyphs ?? ImageGlyphSets.Default;
 
     public async Task<int> RunAsync()
     {
@@ -27,6 +30,12 @@ internal sealed class TerminalApplication(
             if (command == BoardCommand.Quit)
             {
                 return 0;
+            }
+
+            if (command == BoardCommand.ImageSettings)
+            {
+                if (await RunImageSettingsAsync()) return 0;
+                continue;
             }
 
             if (command == BoardCommand.Reload)
@@ -87,6 +96,23 @@ internal sealed class TerminalApplication(
         }
     }
 
+    private async Task<bool> RunImageSettingsAsync(CardDescriptionImageStore? images = null)
+    {
+        var screen = new ImageSettingsScreen(_imageGlyphs, images?.LoadedPreview());
+        while (true)
+        {
+            var command = await _terminal!.RunAsync(screen);
+            if (command == ImageSettingsCommand.Quit) return true;
+            if (command == ImageSettingsCommand.Cancel) return false;
+            if (await screen.SaveAsync(_settingsStore))
+            {
+                _imageGlyphs = screen.GlyphSets;
+                images?.SetGlyphSets(_imageGlyphs);
+                return false;
+            }
+        }
+    }
+
     private async Task MoveCardAsync(BoardScreen screen, int boardId)
     {
         var move = screen.PendingMove;
@@ -137,6 +163,12 @@ internal sealed class TerminalApplication(
                 return true;
             }
 
+            if (command == CardDetailCommand.ImageSettings)
+            {
+                if (await RunImageSettingsAsync()) return true;
+                continue;
+            }
+
             var pendingDraft = detailScreen.PendingDraft;
             if (pendingDraft is null)
             {
@@ -166,7 +198,8 @@ internal sealed class TerminalApplication(
             return false;
         }
 
-        using var descriptionImages = new CardDescriptionImageStore(_client, boardId, selectedCard.Id);
+        using var descriptionImages = new CardDescriptionImageStore(
+            _client, boardId, selectedCard.Id, _imageGlyphs);
         var detailScreen = new CardDetailScreen(
             boardScreen.Data,
             selectedCard,
@@ -183,6 +216,12 @@ internal sealed class TerminalApplication(
             if (command == CardDetailCommand.Quit)
             {
                 return true;
+            }
+
+            if (command == CardDetailCommand.ImageSettings)
+            {
+                if (await RunImageSettingsAsync(descriptionImages)) return true;
+                continue;
             }
 
             if (command == CardDetailCommand.LoadComments)

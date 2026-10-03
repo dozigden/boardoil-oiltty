@@ -22,11 +22,51 @@ You can switch board, create, move, and edit cards. You'll have to wait for crea
 
 Attachment images embedded in card descriptions and comments render as
 truecolour terminal art. OilTTY uses BoardOil's PNG thumbnails, combining quadrant
-characters with eighth-height blocks for finer horizontal edges. It chooses the
-shape and two colours that best match each cell. This works without a terminal-specific image protocol.
-Board cards remain compact, without image previews.
+and sextant characters with smooth diagonal mosaic blocks and eighth-height and eighth-width blocks for finer edges and shapes. It
+chooses the shape and two colours that best match each cell, without a
+terminal-specific image protocol. Board cards remain compact, without previews.
 Images remain raw Markdown while editing, and unavailable previews fall back to
 their alt text.
+
+Half blocks are always available. The default adds `quadrants,eighths,sextants,vertical-eighths,diagonals`;
+disable any set your terminal does not render correctly. Each set can be selected
+independently, or use `halfblocks` alone for the baseline. `eighths` controls
+horizontal edges; `vertical-eighths` controls vertical edges; `diagonals` adds sloping
+edges using the terminal graphics in Unicode Symbols for Legacy Computing.
+
+Press **F2** from a board or card to edit these settings. Use the arrow keys and
+Space to toggle sets while viewing a live preview of a loaded card image, or a
+built-in sample. Choose **Save** (or press **Ctrl+S**) to apply the choice immediately
+and remember it locally. **Escape** cancels without changing your settings.
+
+Save your usual choice locally (this exits without signing in):
+
+```sh
+dotnet run --project OilTTY -- --save-image-glyphs quadrants,eighths,sextants,vertical-eighths,diagonals
+```
+
+This stores `imageGlyphs` in `oiltty/settings.json` beside the saved server.
+On Linux that is normally `~/.config/oiltty/settings.json`, or
+`$XDG_CONFIG_HOME/oiltty/settings.json` when configured. On other platforms OilTTY
+uses the user's application-data directory.
+
+For a temporary override:
+
+```sh
+dotnet run --project OilTTY -- --image-glyphs quadrants,eighths
+# Or set OILTTY_IMAGE_GLYPHS in this terminal's environment:
+OILTTY_IMAGE_GLYPHS=halfblocks dotnet run --project OilTTY
+```
+
+Startup precedence is command line → environment → saved setting → default.
+Overrides do not overwrite the saved choice; explicitly saving in the F2 panel
+does. You can also edit the settings file directly:
+
+```json
+{
+  "imageGlyphs": "quadrants,eighths,sextants,vertical-eighths,diagonals"
+}
+```
 
 ### Full slick rendering
 
