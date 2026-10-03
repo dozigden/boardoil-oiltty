@@ -58,12 +58,12 @@ published application output.
 | Project | Packages | Version | License |
 | --- | --- | --- | --- |
 | [Application Insights for .NET](https://github.com/microsoft/ApplicationInsights-dotnet) | `Microsoft.ApplicationInsights` | 2.23.0 | [MIT](https://github.com/microsoft/ApplicationInsights-dotnet/blob/2faa7e8b157a431daa2e71785d68abd5fa817b53/LICENSE) |
-| [.NET runtime](https://github.com/dotnet/runtime) | `Microsoft.Bcl.AsyncInterfaces`; `Microsoft.Win32.Registry` | 6.0.0; 5.0.0 | [MIT](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT) |
-| [Microsoft Testing Platform](https://github.com/microsoft/testfx) | `Microsoft.Testing.Extensions.Telemetry`; `Microsoft.Testing.Extensions.TrxReport.Abstractions`; `Microsoft.Testing.Platform`; `Microsoft.Testing.Platform.MSBuild` | 1.9.1 | [MIT](https://github.com/microsoft/testfx/blob/cb5afc3bb9bb01ebd75b57f89e8358b914ee2a49/LICENSE) |
-| [VSTest](https://github.com/microsoft/vstest) | `Microsoft.CodeCoverage`; `Microsoft.NET.Test.Sdk`; `Microsoft.TestPlatform.ObjectModel`; `Microsoft.TestPlatform.TestHost` | 18.8.1 | [MIT](https://github.com/microsoft/vstest/blob/190d2811e952d2143288aa136b6f6fe31d93a437/LICENSE) |
-| [xUnit.net](https://github.com/xunit/xunit) | `xunit.v3`; `xunit.v3.assert`; `xunit.v3.common`; `xunit.v3.core.mtp-v1`; `xunit.v3.extensibility.core`; `xunit.v3.mtp-v1`; `xunit.v3.runner.common`; `xunit.v3.runner.inproc.console` | 3.2.2 | [Apache-2.0](https://github.com/xunit/xunit/blob/728c1dce012cd82193035dddfeaba184baaa88c6/LICENSE) |
-| [xUnit.net Analyzers](https://github.com/xunit/xunit.analyzers) | `xunit.analyzers` | 1.27.0 | [Apache-2.0](https://github.com/xunit/xunit.analyzers/blob/a2260df3e96395e6b513e5c7485bd6c53806871e/LICENSE) |
-| [xUnit.net Visual Studio adapter](https://github.com/xunit/visualstudio.xunit) | `xunit.runner.visualstudio` | 3.1.5 | [Apache-2.0](https://github.com/xunit/visualstudio.xunit/blob/1b188a7b0a069d7fc94ae3c0b251f1302b602b63/License.txt) |
+| [.NET runtime](https://github.com/dotnet/runtime) | `Microsoft.Bcl.AsyncInterfaces`; `Microsoft.Win32.Registry`; `System.Security.AccessControl` | 6.0.0; 5.0.0; 6.0.1 | [MIT](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT) |
+| [Microsoft Testing Platform](https://github.com/microsoft/testfx) | `Microsoft.Testing.Extensions.Telemetry`; `Microsoft.Testing.Extensions.TrxReport.Abstractions`; `Microsoft.Testing.Platform`; `Microsoft.Testing.Platform.MSBuild` | 2.4.0 | [MIT](https://github.com/microsoft/testfx/blob/a2a92fdb11ad38cd55b31223c4cfbb070fa01c05/LICENSE) |
+| [VSTest](https://github.com/microsoft/vstest) | `Microsoft.CodeCoverage`; `Microsoft.NET.Test.Sdk`; `Microsoft.TestPlatform.ObjectModel`; `Microsoft.TestPlatform.TestHost` | 18.10.1 | [MIT](https://github.com/microsoft/vstest/blob/87dfd4b2d2bacd91ad69e009ade6f4715b3b46ec/LICENSE) |
+| [xUnit.net](https://github.com/xunit/xunit) | `xunit.v3`; `xunit.v3.assert`; `xunit.v3.common`; `xunit.v3.core.mtp-v2`; `xunit.v3.extensibility.core`; `xunit.v3.mtp-v2`; `xunit.v3.runner.common`; `xunit.v3.runner.inproc.console` | 4.0.1 | [Apache-2.0](https://github.com/xunit/xunit/blob/8ed8aa354c7298e157a0fc2dcd61b95df345256a/LICENSE) |
+| [xUnit.net Analyzers](https://github.com/xunit/xunit.analyzers) | `xunit.analyzers` | 2.1.0 | [Apache-2.0](https://github.com/xunit/xunit.analyzers/blob/cf90c99d73c3df1c53d54b60cd19130a06287382/LICENSE) |
+| [xUnit.net Visual Studio adapter](https://github.com/xunit/visualstudio.xunit) | `xunit.runner.visualstudio` | 4.0.0 | [Apache-2.0](https://github.com/xunit/visualstudio.xunit/blob/05679a7ab5ca2461d06880faaefe26770e0fdf77/License.txt) |
 
 The package list includes direct and transitive dependencies from the resolved
 `OilTTY.Tests` dependency graph.
