@@ -408,7 +408,12 @@ internal sealed class CardDescriptionThumbnail
             Math.Min(maximumColumns / (double)Width, maximumRows * 2d / Height));
         var pixelWidth = Math.Clamp((int)Math.Round(Width * scale), 1, maximumColumns);
         var pixelHeight = Math.Clamp((int)Math.Round(Height * scale), 1, maximumRows * 2);
-        var pixels = Resize(pixelWidth, pixelHeight, background);
+        // Keep the existing physical size, sampling a 2×8 grid per cell so both
+        // quadrant shapes and eighth-height horizontal edges use the same evidence.
+        var sampleWidth = pixelWidth * 2;
+        var sampleHeight = pixelHeight * 4;
+        var pixels = Resize(sampleWidth, sampleHeight, background);
+        Span<Rgb> cellPixels = stackalloc Rgb[16];
         var leftPadding = Math.Max(0, (maximumColumns - pixelWidth) / 2);
         var lines = new List<CardDetailLine>((pixelHeight + 1) / 2);
         for (var sourceY = 0; sourceY < pixelHeight; sourceY += 2)
@@ -421,17 +426,130 @@ internal sealed class CardDescriptionThumbnail
 
             for (var x = 0; x < pixelWidth; x++)
             {
-                var upper = pixels[(sourceY * pixelWidth) + x];
-                var lower = sourceY + 1 < pixelHeight
-                    ? pixels[((sourceY + 1) * pixelWidth) + x]
-                    : background;
-                spans.Add(new CardDetailSpan("▀", upper, lower));
+                for (var row = 0; row < 8; row++)
+                {
+                    var sampleY = (sourceY * 4) + row;
+                    var offset = (sampleY * sampleWidth) + (x * 2);
+                    // An odd final half-row retains the pane background below it.
+                    cellPixels[row * 2] = sampleY < sampleHeight ? pixels[offset] : background;
+                    cellPixels[(row * 2) + 1] = sampleY < sampleHeight ? pixels[offset + 1] : background;
+                }
+                spans.Add(FitImageCell(cellPixels, sourceY + 1 < pixelHeight ? null : background));
             }
 
             lines.Add(new CardDetailLine(spans));
         }
 
         return lines;
+    }
+
+    private static readonly (string Glyph, int Mask)[] ImageGlyphs = CreateImageGlyphs();
+
+    private static (string Glyph, int Mask)[] CreateImageGlyphs()
+    {
+        var glyphs = new List<(string, int)>();
+        string[] quadrants = [" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛"];
+        // Complementary masks have the same fit with swapped colours. Prefer the
+        // existing shapes on ties, especially the half block for flat colours.
+        foreach (var mask in new[] { 3, 1, 2, 4, 5, 6, 7 })
+        {
+            var expanded = 0;
+            for (var row = 0; row < 8; row++)
+            {
+                var quadrantRow = row < 4 ? 0 : 2;
+                for (var column = 0; column < 2; column++)
+                {
+                    if ((mask & (1 << (quadrantRow + column))) != 0)
+                    {
+                        expanded |= 1 << ((row * 2) + column);
+                    }
+                }
+            }
+            glyphs.Add((quadrants[mask], expanded));
+        }
+
+        string[] lowerBlocks = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇"];
+        for (var eighths = 1; eighths < 8; eighths++)
+        {
+            if (eighths != 4) // Already represented by the upper half block.
+            {
+                glyphs.Add((lowerBlocks[eighths], (0xffff << ((8 - eighths) * 2)) & 0xffff));
+            }
+        }
+        return glyphs.ToArray();
+    }
+
+    private static CardDetailSpan FitImageCell(ReadOnlySpan<Rgb> pixels, Rgb? bottomPadding)
+    {
+        var bestError = long.MaxValue;
+        var result = new CardDetailSpan("▀", pixels[0], pixels[8]);
+        foreach (var (glyph, mask) in ImageGlyphs)
+        {
+            const int lowerHalfMask = 0xff00;
+            var coveredPadding = mask & lowerHalfMask;
+            if (bottomPadding is not null && coveredPadding != 0 && coveredPadding != lowerHalfMask)
+            {
+                // Splitting the padding would force both colours to the pane background,
+                // leaving no colour available to represent the image above it.
+                continue;
+            }
+
+            var foreground = AverageSamples(pixels, mask, true);
+            var background = AverageSamples(pixels, mask, false);
+            if (bottomPadding is Rgb padding)
+            {
+                // Padding is outside the image, so its colour must be exact rather than
+                // averaged with image samples that share this part of the glyph.
+                if (coveredPadding == lowerHalfMask)
+                {
+                    foreground = padding;
+                }
+                else
+                {
+                    background = padding;
+                }
+            }
+            var error = 0L;
+            for (var index = 0; index < pixels.Length; index++)
+            {
+                var colour = (mask & (1 << index)) != 0 ? foreground : background;
+                var red = pixels[index].Red - colour.Red;
+                var green = pixels[index].Green - colour.Green;
+                var blue = pixels[index].Blue - colour.Blue;
+                error += (red * red) + (green * green) + (blue * blue);
+            }
+
+            if (error < bestError)
+            {
+                bestError = error;
+                result = new CardDetailSpan(glyph, foreground, background);
+            }
+        }
+
+        return result;
+    }
+
+    private static Rgb AverageSamples(ReadOnlySpan<Rgb> pixels, int mask, bool selected)
+    {
+        var red = 0;
+        var green = 0;
+        var blue = 0;
+        var count = 0;
+        for (var index = 0; index < pixels.Length; index++)
+        {
+            if (((mask & (1 << index)) != 0) != selected)
+            {
+                continue;
+            }
+
+            red += pixels[index].Red;
+            green += pixels[index].Green;
+            blue += pixels[index].Blue;
+            count++;
+        }
+
+        return new Rgb((byte)Math.Round(red / (double)count),
+            (byte)Math.Round(green / (double)count), (byte)Math.Round(blue / (double)count));
     }
 
     private Rgb[] Resize(int targetWidth, int targetHeight, Rgb background)

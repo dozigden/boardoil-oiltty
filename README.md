@@ -18,11 +18,13 @@ OilTTY supports basic board navigation and card editing.  More advanced features
 
 You can switch board, create, move, and edit cards. You'll have to wait for creating tags, types, and slicks though.
 
-### Description images
+### Description and comment images
 
-Attachment images embedded in card descriptions render as low-resolution,
-truecolour terminal art. OilTTY uses BoardOil's PNG thumbnails and terminal
-half-block cells, so this works without a terminal-specific image protocol.
+Attachment images embedded in card descriptions and comments render as
+truecolour terminal art. OilTTY uses BoardOil's PNG thumbnails, combining quadrant
+characters with eighth-height blocks for finer horizontal edges. It chooses the
+shape and two colours that best match each cell. This works without a terminal-specific image protocol.
+Board cards remain compact, without image previews.
 Images remain raw Markdown while editing, and unavailable previews fall back to
 their alt text.
 
