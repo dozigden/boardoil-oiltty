@@ -177,6 +177,22 @@ internal static class BoardCardRenderer
             DrawTag(canvas, tagX, contentY, label, BoardStyles.ResolveTag(tag), style, x, width);
             tagX += tagWidth;
         }
+
+        var checklistY = y + height - 2;
+        if (layoutCard.ChecklistLabel is string checklistLabel && checklistY < contentBottom)
+        {
+            var checklistWidth = UnicodeDisplay.TextWidth(checklistLabel);
+            PutStyledText(
+                canvas,
+                x + width - contentInset - checklistWidth,
+                checklistY,
+                checklistLabel,
+                style.Foreground,
+                style,
+                x,
+                width,
+                checklistWidth);
+        }
     }
 
     private static void PutBorderCell(

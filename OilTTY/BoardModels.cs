@@ -74,7 +74,9 @@ internal sealed record BoardCard(
     string? AssignedUserImageRelativePath,
     int? SlickId,
     string? SlickName,
-    string? ExternalUrl);
+    string? ExternalUrl,
+    int CompletedChecklistItemCount = 0,
+    int TotalChecklistItemCount = 0);
 
 internal sealed record CardComment(
     int Id,

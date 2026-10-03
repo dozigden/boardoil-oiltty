@@ -41,7 +41,9 @@ public sealed class BoardOilClientCardTests
           "assignedUserImageRelativePath": "/images/luke.png",
           "slickId": 12,
           "slickName": "Editor",
-          "externalUrl": "https://example.test/story/42"
+          "externalUrl": "https://example.test/story/42",
+          "completedChecklistItemCount": 3,
+          "totalChecklistItemCount": 7
         }
         """;
 
@@ -60,6 +62,21 @@ public sealed class BoardOilClientCardTests
         Assert.Equal("Luke", card.AssignedUserDisplayName);
         Assert.Equal("/images/luke.png", card.AssignedUserImageRelativePath);
         Assert.Equal("https://example.test/story/42", card.ExternalUrl);
+        Assert.Equal(3, card.CompletedChecklistItemCount);
+        Assert.Equal(7, card.TotalChecklistItemCount);
+    }
+
+    [Fact]
+    public void BoardCard_MissingChecklistCountsDefaultToZero()
+    {
+        var json = System.Text.Json.Nodes.JsonNode.Parse(CardJson)!.AsObject();
+        json.Remove("completedChecklistItemCount");
+        json.Remove("totalChecklistItemCount");
+
+        var card = json.Deserialize<BoardCard>(JsonOptions)!;
+
+        Assert.Equal(0, card.CompletedChecklistItemCount);
+        Assert.Equal(0, card.TotalChecklistItemCount);
     }
 
     [Fact]
@@ -226,6 +243,8 @@ public sealed class BoardOilClientCardTests
         Assert.Equal("Edited title", updated.Title);
         Assert.Equal(["UI", "Tech Debt"], updated.TagNames);
         Assert.Equal("https://example.test/story/42", updated.ExternalUrl);
+        Assert.Equal(3, updated.CompletedChecklistItemCount);
+        Assert.Equal(7, updated.TotalChecklistItemCount);
     }
 
     [Fact]

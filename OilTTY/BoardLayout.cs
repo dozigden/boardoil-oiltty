@@ -21,7 +21,8 @@ internal sealed record BoardLayoutCard(
     int Width,
     int Height,
     IReadOnlyList<string> TitleLines,
-    string? AssignedUserLabel)
+    string? AssignedUserLabel,
+    string? ChecklistLabel)
 {
     public double Centre => Y + (Height / 2.0);
 }
@@ -190,10 +191,38 @@ internal sealed class BoardLayoutEngine
             var cardY = y + (needsSpacerAbove ? 1 : 0);
             var titleLines = ResolveTitleLines(card, cardWidth);
             var assignedUserLabel = ResolveAssignedUserLabel(card);
+            var tagLayout = ResolveTagLayout(card, cardWidth);
             var cardHeight = 2
                 + titleLines.Count
                 + (assignedUserLabel is null ? 0 : 1)
-                + ResolveTagRowCount(card, cardWidth);
+                + tagLayout.Rows;
+            var checklistLabel = card.TotalChecklistItemCount > 0
+                ? $"☑\uFE0E {card.CompletedChecklistItemCount}/{card.TotalChecklistItemCount}"
+                : null;
+            if (checklistLabel is not null)
+            {
+                var lastRowEnd = cardWidth - 2; // The card number occupies the first title row's right edge.
+                if (tagLayout.Rows > 0)
+                {
+                    lastRowEnd = 1 + tagLayout.LastRowWidth;
+                }
+                else if (assignedUserLabel is not null)
+                {
+                    var assigneeWidth = UnicodeDisplay.TextWidth(
+                        $"{UnicodeDisplay.EmojiLabelPrefix("👤")}{assignedUserLabel}");
+                    lastRowEnd = 2 + Math.Min(assigneeWidth, cardWidth - 4);
+                }
+                else if (titleLines.Count > 1)
+                {
+                    lastRowEnd = 2 + TitleEmojiWidth(card) + UnicodeDisplay.TextWidth(titleLines[^1]);
+                }
+
+                var checklistStart = cardWidth - 2 - UnicodeDisplay.TextWidth(checklistLabel);
+                if (lastRowEnd + 1 > checklistStart)
+                {
+                    cardHeight++;
+                }
+            }
             var requiredBottom = cardY + cardHeight + (card.SlickId is not null ? 1 : 0);
             if (cardY >= contentBottom)
             {
@@ -208,7 +237,8 @@ internal sealed class BoardLayoutEngine
                 cardWidth,
                 cardHeight,
                 titleLines,
-                assignedUserLabel));
+                assignedUserLabel,
+                checklistLabel));
             y = cardY + cardHeight;
             previous = card;
             if (requiredBottom > contentBottom)
@@ -223,22 +253,25 @@ internal sealed class BoardLayoutEngine
     private static bool CardExtendsPastViewport(BoardLayoutCard card, int contentBottom) =>
         card.Y + card.Height + (card.Card.SlickId is null ? 0 : 1) > contentBottom;
 
+    private static int TitleEmojiWidth(BoardCard card) =>
+        string.IsNullOrWhiteSpace(card.CardTypeEmoji)
+            ? 0
+            : UnicodeDisplay.TextWidth(UnicodeDisplay.EmojiLabelPrefix(card.CardTypeEmoji));
+
     private static IReadOnlyList<string> ResolveTitleLines(BoardCard card, int cardWidth)
     {
         var numberWidth = UnicodeDisplay.TextWidth($"#{card.Id}");
-        var emojiWidth = string.IsNullOrWhiteSpace(card.CardTypeEmoji)
-            ? 0
-            : UnicodeDisplay.TextWidth(UnicodeDisplay.EmojiLabelPrefix(card.CardTypeEmoji));
+        var emojiWidth = TitleEmojiWidth(card);
         var firstLineWidth = Math.Max(2, cardWidth - 5 - emojiWidth - numberWidth);
         var continuationWidth = Math.Max(2, cardWidth - 4 - emojiWidth);
         return UnicodeDisplay.WrapText(card.Title, firstLineWidth, continuationWidth);
     }
 
-    private static int ResolveTagRowCount(BoardCard card, int cardWidth)
+    private static (int Rows, int LastRowWidth) ResolveTagLayout(BoardCard card, int cardWidth)
     {
         if (card.Tags.Count == 0)
         {
-            return 0;
+            return (0, 0);
         }
 
         var availableWidth = Math.Max(3, cardWidth - 3);
@@ -256,7 +289,7 @@ internal sealed class BoardLayoutEngine
             usedWidth += tagWidth;
         }
 
-        return rows;
+        return (rows, usedWidth);
     }
 
     public static string ResolveTagLabel(CardTag tag, int availableWidth)
