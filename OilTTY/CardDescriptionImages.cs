@@ -547,11 +547,13 @@ internal sealed class CardDescriptionThumbnail
         var totalRed = 0;
         var totalGreen = 0;
         var totalBlue = 0;
+        long squaredSamples = 0;
         foreach (var pixel in pixels)
         {
             totalRed += pixel.Red;
             totalGreen += pixel.Green;
             totalBlue += pixel.Blue;
+            squaredSamples += pixel.Red * pixel.Red + pixel.Green * pixel.Green + pixel.Blue * pixel.Blue;
         }
 
         var bestError = long.MaxValue;
@@ -599,10 +601,14 @@ internal sealed class CardDescriptionThumbnail
                 }
             }
 
-            // The sum of squared source samples is common to every candidate and
-            // cancels when comparing errors. Colour sums avoid rescanning each group.
-            var error = ColourError(foreground, red, green, blue, count)
+            // Restore the full non-negative squared error before weighting it;
+            // the common source term cannot be omitted with unequal weights.
+            var error = squaredSamples + ColourError(foreground, red, green, blue, count)
                 + ColourError(background, totalRed - red, totalGreen - green, totalBlue - blue, backgroundCount);
+            // Thin vertical bands can look striped despite a marginally better
+            // fit. Require a meaningful improvement (20% error penalty), while
+            // preserving exact edges and the ordinary left half block.
+            error *= glyph.Set == ImageGlyphSets.VerticalEighths && glyph.Text != "▌" ? 6 : 5;
             if (error < bestError)
             {
                 bestError = error;

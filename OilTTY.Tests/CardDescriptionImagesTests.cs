@@ -48,6 +48,26 @@ public sealed class CardDescriptionImagesTests
     }
 
     [Theory]
+    [InlineData(9, "▀")]
+    [InlineData(10, "▍")]
+    public void Thumbnail_UsesVerticalEighthsOnlyForAMeaningfullyBetterFit(int contrast, string expected)
+    {
+        // Two competing edges: a vertical three-eighths division and a horizontal
+        // half. At contrast 9 the vertical edge only narrowly improves raw error;
+        // at 10 its improvement is large enough to overcome the stripe penalty.
+        var pixels = Enumerable.Range(0, 24 * 48).SelectMany(index =>
+        {
+            var value = (byte)(128 + (index % 24 < 9 ? -contrast : contrast)
+                + (index / 24 < 24 ? -8 : 8));
+            return new byte[] { value, value, value, 255 };
+        }).ToArray();
+        var thumbnail = CardDescriptionThumbnail.DecodePng(Png(24, 48, pixels));
+        var span = Assert.Single(Assert.Single(thumbnail.RenderLines(1, 1,
+            new Rgb(22, 29, 39), ImageGlyphSets.VerticalEighths)).Spans);
+        Assert.Equal(expected, span.Text);
+    }
+
+    [Theory]
     [InlineData(1, "▏")]
     [InlineData(2, "▎")]
     [InlineData(3, "▍")]
@@ -397,7 +417,7 @@ public sealed class CardDescriptionImagesTests
     [InlineData(17)]
     [InlineData(83)]
     [InlineData(251)]
-    public void Thumbnail_ChoosesMinimumErrorShapeForMixedColours(int seed)
+    public void Thumbnail_ChoosesMinimumWeightedErrorShapeForMixedColours(int seed)
     {
         var random = new Random(seed);
         var samples = Enumerable.Range(0, 192)
@@ -419,7 +439,7 @@ public sealed class CardDescriptionImagesTests
             var shape = new CardDetailSpan(glyph, white, black);
             var groups = Enumerable.Range(0, 192).GroupBy(index =>
                 ImageCellColour(shape, index / 8, index % 8, columns: 8) == white);
-            return groups.Sum(group =>
+            var error = groups.Sum(group =>
             {
                 var colours = group.Select(index => samples[index]).ToArray();
                 var mean = new Rgb((byte)Math.Round(colours.Average(colour => colour.Red)),
@@ -427,9 +447,11 @@ public sealed class CardDescriptionImagesTests
                     (byte)Math.Round(colours.Average(colour => colour.Blue)));
                 return colours.Sum(colour => SquaredDistance(colour, mean));
             });
+            return error * ("▏▎▍▋▊▉".Contains(glyph, StringComparison.Ordinal) ? 6 : 5);
         });
         var actualError = Enumerable.Range(0, 192).Sum(index =>
             SquaredDistance(samples[index], ImageCellColour(actual, index / 8, index % 8, columns: 8)!.Value));
+        actualError *= "▏▎▍▋▊▉".Contains(actual.Text, StringComparison.Ordinal) ? 6 : 5;
         Assert.Equal(minimumError, actualError);
     }
 
