@@ -9,7 +9,7 @@ internal static class BoardCardRenderer
         bool moving)
     {
         Draw(canvas, card, style with { ShowBorder = false }, selected: false, moving: false);
-        var surround = slickColour ?? BoardStyles.BoardBackground;
+        var surround = selected || moving ? BoardStyles.Selection : slickColour ?? BoardStyles.BoardBackground;
         var curved = slickColour is not null;
         var right = card.X + card.Width - 1;
         var bottom = card.Y + card.Height - 1;
@@ -31,19 +31,6 @@ internal static class BoardCardRenderer
             curved ? surround : style.LeftBackground, curved ? style.LeftBackground : surround);
         Edge(right, bottom, curved ? "🭃" : "🬄",
             curved ? surround : style.RightBackground, curved ? style.RightBackground : surround);
-
-        if (selected || moving)
-        {
-            var y = card.Y + 1;
-            if (y >= BoardLayoutEngine.ContentStartRow && y < canvas.Height - 2)
-            {
-                canvas.Put(card.X + 1, y, moving ? "↕" : "▸", BoardStyles.Selection,
-                    style.BackgroundAt(1, card.Width), bold: true);
-                var number = $"#{card.Card.Id}";
-                canvas.Put(right - 1 - UnicodeDisplay.TextWidth(number), y, number,
-                    BoardStyles.RootBackground, BoardStyles.Selection, bold: true);
-            }
-        }
 
         void Edge(int x, int y, string glyph, Rgb foreground, Rgb background)
         {

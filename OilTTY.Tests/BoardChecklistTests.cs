@@ -32,7 +32,9 @@ public sealed class BoardChecklistTests
             Assert.Contains($"☑\uFE0E {completed}/7", RowText(canvas, labelY));
             Assert.Equal(4, layout.Height);
             Assert.Equal("🬦", canvas.CellAt(layout.X, layout.Y).Grapheme);
-            Assert.Equal(selected ? "▸" : " ", canvas.CellAt(layout.X + 1, layout.Y + 1).Grapheme);
+            Assert.Equal(" ", canvas.CellAt(layout.X + 1, layout.Y + 1).Grapheme);
+            Assert.Equal(selected ? BoardStyles.Selection : BoardStyles.BoardBackground,
+                canvas.CellAt(layout.X, layout.Y).Background);
             var labelX = layout.X + layout.Width - 2 - UnicodeDisplay.TextWidth(layout.ChecklistLabel!);
             var style = BoardStyles.ResolveCard(CardType);
             Assert.Equal(style.Foreground, canvas.CellAt(labelX, labelY).Foreground);

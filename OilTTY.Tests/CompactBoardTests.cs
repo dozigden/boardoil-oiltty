@@ -49,17 +49,26 @@ public sealed class CompactBoardTests
         Assert.Equal(style.RightBackground, selected.CellAt(card.X + card.Width - 1, card.Y + 1).Background);
         for (var x = card.X; x < card.X + card.Width; x++)
         {
-            Assert.Equal(normal.CellAt(x, card.Y), selected.CellAt(x, card.Y));
+            Assert.Equal(normal.CellAt(x, card.Y).Grapheme, selected.CellAt(x, card.Y).Grapheme);
+            Assert.Equal(BoardStyles.Selection,
+                x == card.X || x == card.X + card.Width - 1
+                    ? selected.CellAt(x, card.Y).Background : selected.CellAt(x, card.Y).Foreground);
             Assert.Equal(style.BackgroundAt(x - card.X, card.Width),
                 x == card.X || x == card.X + card.Width - 1
                     ? selected.CellAt(x, card.Y).Foreground : selected.CellAt(x, card.Y).Background);
         }
-        Assert.Equal("▸", selected.CellAt(card.X + 1, card.Y + 1).Grapheme);
-        Assert.Equal(BoardStyles.Selection, selected.CellAt(card.X + card.Width - 6, card.Y + 1).Background);
+        // Selection changes only the inset, preserving contents and the outer slick.
+        for (var y = 0; y < selected.Height; y++)
+        for (var x = 0; x < selected.Width; x++)
+        {
+            var onInset = x >= card.X && x < card.X + card.Width && y >= card.Y && y < card.Y + card.Height
+                && (x == card.X || x == card.X + card.Width - 1 || y == card.Y || y == card.Y + card.Height - 1);
+            if (!onInset) Assert.Equal(normal.CellAt(x, y), selected.CellAt(x, y));
+        }
     }
 
     [Fact]
-    public void ScrollThumb_OverlaysBridgesWithStableBackingAndPreservesFooter()
+    public void ScrollThumb_OverlaysBridgesWithOpaqueBevelAndPreservesFooter()
     {
         var data = Data(
             TestBoardFactory.Column(1, Enumerable.Range(1, 10).Select(id => TestBoardFactory.Card(id, 1, slickId: 7)).ToArray()),
@@ -70,8 +79,8 @@ public sealed class CompactBoardTests
         Assert.Equal("🬂", canvas.CellAt(partial.X + 2, partial.Y).Grapheme);
         var thumb = canvas.CellAt(39, 5);
         Assert.Equal("▌", thumb.Grapheme);
-        Assert.Equal(BoardStyles.ScrollIndicator, thumb.Foreground);
-        Assert.Equal(BoardStyles.BoardBackground, thumb.Background);
+        Assert.Equal(BoardStyles.ScrollIndicatorHighlight, thumb.Foreground);
+        Assert.Equal(BoardStyles.ScrollIndicatorShade, thumb.Background);
         Assert.Equal(BoardStyles.ResolveSlick(null, 7), canvas.CellAt(40, 5).Background);
         for (var x = 0; x < canvas.Width; x++)
         {
@@ -111,11 +120,16 @@ public sealed class CompactBoardTests
         screen.HandleKey(Key('l', ConsoleKey.L), viewport);
         for (var i = 0; i < 5; i++) screen.HandleKey(Key('j', ConsoleKey.J), viewport);
         var after = screen.Render(viewport).Canvas;
-        // Exclude selection marker/number, headers and scrollbar; card content
-        // in the left column must remain at its remembered vertical position.
+        // Ignore the inset's selection colour, headers and scrollbar; card
+        // content must remain at its remembered vertical position.
         for (var y = 3; y < 16; y++)
         for (var x = 5; x < 30; x++)
-            Assert.Equal(before.CellAt(x, y), after.CellAt(x, y));
+        {
+            var cell = before.CellAt(x, y);
+            Assert.Equal(cell.Grapheme, after.CellAt(x, y).Grapheme);
+            if (cell.Foreground != BoardStyles.Selection && cell.Background != BoardStyles.Selection)
+                Assert.Equal(cell, after.CellAt(x, y));
+        }
     }
 
     private static ConsoleKeyInfo Key(char c, ConsoleKey key) => new(c, key, false, false, false);

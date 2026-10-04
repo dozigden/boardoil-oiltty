@@ -121,6 +121,8 @@ internal static class BoardStyles
     public static Rgb CardShadow => Mix(RootBackground, Selection, 0.22);
     public static Rgb FieldAnchorPlaceholder => Mix(BorderSoft, Selection, 0.42);
     public static Rgb ScrollIndicator => Mix(BorderSoft, Selection, 0.4);
+    public static Rgb ScrollIndicatorHighlight => Mix(ScrollIndicator, MixLight, 0.16);
+    public static Rgb ScrollIndicatorShade => Mix(ScrollIndicator, MixDark, 0.12);
     public static Rgb Connected => _palette.Connected;
     public static Rgb Danger => _palette.Danger;
     public static Rgb InputActiveBackground => Mix(RootBackground, Selection, 0.18);

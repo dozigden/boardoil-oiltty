@@ -159,8 +159,8 @@ internal static class BoardChromeRenderer
                     x,
                     y,
                     "▌",
-                    BoardStyles.ScrollIndicator,
-                    BoardStyles.BoardBackground);
+                    BoardStyles.ScrollIndicatorHighlight,
+                    BoardStyles.ScrollIndicatorShade);
             }
         }
     }

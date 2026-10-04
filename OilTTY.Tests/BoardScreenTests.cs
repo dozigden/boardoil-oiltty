@@ -129,8 +129,8 @@ public sealed class BoardScreenTests
         Assert.Null(screen.PendingMove);
 
         var canvas = screen.Render(Viewport).Canvas;
-        Assert.Equal("↕", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 1).Grapheme);
-        Assert.Equal(BoardStyles.Selection, canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 1).Foreground);
+        Assert.Equal("🬦", canvas.CellAt(2, BoardLayoutEngine.ContentStartRow).Grapheme);
+        Assert.Equal(BoardStyles.Selection, canvas.CellAt(2, BoardLayoutEngine.ContentStartRow).Background);
         Assert.Equal("█", canvas.CellAt(76, BoardLayoutEngine.ContentStartRow + 1).Grapheme);
         Assert.Equal(BoardStyles.CardShadow, canvas.CellAt(76, BoardLayoutEngine.ContentStartRow + 1).Foreground);
         Assert.Equal("█", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 3).Grapheme);
@@ -151,7 +151,7 @@ public sealed class BoardScreenTests
 
         var canvas = screen.Render(Viewport).Canvas;
 
-        Assert.Equal("↕", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 1).Grapheme);
+        Assert.Equal("🬦", canvas.CellAt(2, BoardLayoutEngine.ContentStartRow).Grapheme);
         Assert.Equal("█", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 3).Grapheme);
         Assert.Equal(BoardStyles.CardShadow, canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 3).Foreground);
         Assert.Contains("Card 20", RowText(canvas, 3, BoardLayoutEngine.ContentStartRow + 4, 74));
