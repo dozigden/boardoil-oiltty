@@ -1,5 +1,57 @@
 internal static class BoardCardRenderer
 {
+    public static void DrawCompact(
+        TerminalCanvas canvas,
+        BoardLayoutCard card,
+        SurfaceStyle style,
+        Rgb? slickColour,
+        bool selected,
+        bool moving)
+    {
+        Draw(canvas, card, style with { ShowBorder = false }, selected: false, moving: false);
+        var surround = slickColour ?? BoardStyles.BoardBackground;
+        var curved = slickColour is not null;
+        var right = card.X + card.Width - 1;
+        var bottom = card.Y + card.Height - 1;
+        for (var x = card.X + 1; x < right; x++)
+        {
+            Edge(x, card.Y, "🬂", surround, style.BackgroundAt(x - card.X, card.Width));
+            Edge(x, bottom, "🬎", style.BackgroundAt(x - card.X, card.Width), surround);
+        }
+        for (var y = card.Y + 1; y < Math.Min(bottom, canvas.Height - 2); y++)
+        {
+            Edge(card.X, y, "▌", surround, style.LeftBackground);
+            Edge(right, y, "▐", surround, style.RightBackground);
+        }
+        // Square corners use sextants: the card occupies half the width and
+        // two thirds of the height. Slick corners curve between the same ports.
+        Edge(card.X, card.Y, curved ? "🭉" : "🬦", style.LeftBackground, surround);
+        Edge(right, card.Y, curved ? "🬾" : "🬓", style.RightBackground, surround);
+        Edge(card.X, bottom, curved ? "🭎" : "🬉",
+            curved ? surround : style.LeftBackground, curved ? style.LeftBackground : surround);
+        Edge(right, bottom, curved ? "🭃" : "🬄",
+            curved ? surround : style.RightBackground, curved ? style.RightBackground : surround);
+
+        if (selected || moving)
+        {
+            var y = card.Y + 1;
+            if (y >= BoardLayoutEngine.ContentStartRow && y < canvas.Height - 2)
+            {
+                canvas.Put(card.X + 1, y, moving ? "↕" : "▸", BoardStyles.Selection,
+                    style.BackgroundAt(1, card.Width), bold: true);
+                var number = $"#{card.Card.Id}";
+                canvas.Put(right - 1 - UnicodeDisplay.TextWidth(number), y, number,
+                    BoardStyles.RootBackground, BoardStyles.Selection, bold: true);
+            }
+        }
+
+        void Edge(int x, int y, string glyph, Rgb foreground, Rgb background)
+        {
+            if (x >= 0 && x < canvas.Width && y >= BoardLayoutEngine.ContentStartRow && y < canvas.Height - 2)
+                canvas.SetCell(x, y, glyph, foreground, background);
+        }
+    }
+
     public static void DrawShadow(TerminalCanvas canvas, BoardLayoutCard layoutCard)
     {
         var rightX = layoutCard.X + layoutCard.Width;

@@ -9,7 +9,7 @@ internal static class BoardChromeRenderer
         string status,
         bool movingCard)
     {
-        canvas.Fill(0, 0, canvas.Width, canvas.Height, BoardStyles.RootBackground);
+        canvas.Fill(0, 0, canvas.Width, canvas.Height, BoardStyles.BoardBackground);
         canvas.HorizontalLine(0, HeaderSeparatorRow, canvas.Width, "─", BoardStyles.BorderSoft);
         canvas.HorizontalLine(0, canvas.Height - 2, canvas.Width, "─", BoardStyles.BorderSoft);
         ScreenChromeRenderer.DrawTopRow(canvas, data.Board.Name, status);
@@ -72,6 +72,7 @@ internal static class BoardChromeRenderer
                     BoardStyles.InputActiveBackground);
             }
 
+            // Slicks are drawn afterwards, covering the dividers where they bridge.
             for (var y = ColumnHeaderRow; y < canvas.Height - 2; y++)
             {
                 canvas.Put(column.X, y, "▏", BoardStyles.BorderSoft);
@@ -157,16 +158,16 @@ internal static class BoardChromeRenderer
                 canvas.Put(
                     x,
                     y,
-                    "▐",
+                    "▌",
                     BoardStyles.ScrollIndicator,
-                    canvas.BackgroundAt(x, y));
+                    BoardStyles.BoardBackground);
             }
         }
     }
 
     private static double VisibleCardFraction(BoardLayoutCard card, int contentBottom)
     {
-        var extent = card.Height + (card.Card.SlickId is null ? 0 : 1);
+        var extent = card.Height;
         var visibleExtent = Math.Clamp(contentBottom - card.Y, 0, extent);
         return visibleExtent / (double)extent;
     }

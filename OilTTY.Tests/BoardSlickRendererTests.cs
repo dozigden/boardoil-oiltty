@@ -3,7 +3,7 @@ using Xunit;
 public sealed class BoardSlickRendererTests
 {
     [Fact]
-    public void Draw_BridgesMatchingSlickAcrossColumnDividerWithHalfCellPinch()
+    public void Draw_BridgesMatchingSlickFromOuterBanksAcrossFourGutterCells()
     {
         const int slickId = 7;
         var left = TestBoardFactory.Column(1, TestBoardFactory.Card(1, 1, slickId: slickId));
@@ -28,8 +28,8 @@ public sealed class BoardSlickRendererTests
         BoardSlickRenderer.Draw(canvas, data, layout.Cards);
 
         var colour = new Rgb(56, 86, 136);
-        Assert.Equal("▀", canvas.CellAt(39, 4).Grapheme);
-        Assert.Equal(colour, canvas.CellAt(39, 4).Background);
+        Assert.Equal("🬽", canvas.CellAt(39, 4).Grapheme);
+        Assert.Equal(colour, canvas.CellAt(39, 4).Foreground);
         Assert.Equal(" ", canvas.CellAt(39, 5).Grapheme);
         Assert.Equal(colour, canvas.CellAt(39, 5).Background);
     }

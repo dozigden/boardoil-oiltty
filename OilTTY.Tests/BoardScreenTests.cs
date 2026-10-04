@@ -59,17 +59,17 @@ public sealed class BoardScreenTests
 
         Assert.Equal("▌", first.CellAt(1, 2).Grapheme);
         Assert.Equal(BoardStyles.InputActiveBackground, first.CellAt(1, 2).Background);
-        Assert.Equal(BoardStyles.BorderSoft, first.CellAt(0, 3).Foreground);
-        Assert.Equal(BoardStyles.BorderSoft, first.CellAt(40, 3).Foreground);
+        Assert.Equal("▏", first.CellAt(0, 3).Grapheme);
+        Assert.Equal("▏", first.CellAt(40, 3).Grapheme);
 
         screen.HandleKey(Key('l', ConsoleKey.L), viewport);
         var second = screen.Render(viewport).Canvas;
 
         Assert.Equal(" ", second.CellAt(1, 2).Grapheme);
-        Assert.Equal(BoardStyles.BorderSoft, second.CellAt(0, 3).Foreground);
+        Assert.Equal("▏", second.CellAt(0, 3).Grapheme);
         Assert.Equal("▌", second.CellAt(41, 2).Grapheme);
         Assert.Equal(BoardStyles.InputActiveBackground, second.CellAt(41, 2).Background);
-        Assert.Equal(BoardStyles.BorderSoft, second.CellAt(40, 3).Foreground);
+        Assert.Equal("▏", second.CellAt(40, 3).Grapheme);
     }
 
     [Fact]
@@ -129,11 +129,11 @@ public sealed class BoardScreenTests
         Assert.Null(screen.PendingMove);
 
         var canvas = screen.Render(Viewport).Canvas;
-        Assert.Equal("╔", canvas.CellAt(1, BoardLayoutEngine.ContentStartRow - 1).Grapheme);
-        Assert.Equal(BoardStyles.Selection, canvas.CellAt(1, BoardLayoutEngine.ContentStartRow - 1).Foreground);
-        Assert.Equal("█", canvas.CellAt(77, BoardLayoutEngine.ContentStartRow).Grapheme);
-        Assert.Equal(BoardStyles.CardShadow, canvas.CellAt(77, BoardLayoutEngine.ContentStartRow).Foreground);
-        Assert.Equal("█", canvas.CellAt(2, BoardLayoutEngine.ContentStartRow + 2).Grapheme);
+        Assert.Equal("↕", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 1).Grapheme);
+        Assert.Equal(BoardStyles.Selection, canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 1).Foreground);
+        Assert.Equal("█", canvas.CellAt(76, BoardLayoutEngine.ContentStartRow + 1).Grapheme);
+        Assert.Equal(BoardStyles.CardShadow, canvas.CellAt(76, BoardLayoutEngine.ContentStartRow + 1).Foreground);
+        Assert.Equal("█", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 3).Grapheme);
         Assert.Contains("space drop", FooterText(canvas));
         Assert.Contains("esc cancel", FooterText(canvas));
     }
@@ -151,10 +151,11 @@ public sealed class BoardScreenTests
 
         var canvas = screen.Render(Viewport).Canvas;
 
-        Assert.Equal("╔", canvas.CellAt(1, BoardLayoutEngine.ContentStartRow - 1).Grapheme);
-        Assert.Equal("█", canvas.CellAt(2, BoardLayoutEngine.ContentStartRow + 2).Grapheme);
-        Assert.Equal(BoardStyles.CardShadow, canvas.CellAt(2, BoardLayoutEngine.ContentStartRow + 2).Foreground);
-        Assert.Equal("╭", canvas.CellAt(2, BoardLayoutEngine.ContentStartRow + 3).Grapheme);
+        Assert.Equal("↕", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 1).Grapheme);
+        Assert.Equal("█", canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 3).Grapheme);
+        Assert.Equal(BoardStyles.CardShadow, canvas.CellAt(3, BoardLayoutEngine.ContentStartRow + 3).Foreground);
+        Assert.Contains("Card 20", RowText(canvas, 3, BoardLayoutEngine.ContentStartRow + 4, 74));
+        Assert.Equal("▌", canvas.CellAt(1, 2).Grapheme); // Moving never overwrites the column header.
     }
 
     [Fact]

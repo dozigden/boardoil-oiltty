@@ -11,7 +11,7 @@ internal sealed class BoardRenderer
             layout.Width,
             layout.Height,
             BoardStyles.TextStrong,
-            BoardStyles.RootBackground);
+            BoardStyles.BoardBackground);
         BoardChromeRenderer.DrawFrame(canvas, data, status, movingCardId is not null);
 
         if (data.Board.Columns.Count == 0)
@@ -33,10 +33,11 @@ internal sealed class BoardRenderer
         foreach (var card in layout.Cards.Where(card => card.Card.Id != movingCardId))
         {
             data.CardTypes.TryGetValue(card.Card.CardTypeId, out var cardType);
-            BoardCardRenderer.Draw(
+            BoardCardRenderer.DrawCompact(
                 canvas,
                 card,
                 BoardStyles.ResolveCard(cardType),
+                SlickColour(card),
                 selected: card.Card.Id == selectedCardId,
                 moving: card.Card.Id == movingCardId);
         }
@@ -46,19 +47,27 @@ internal sealed class BoardRenderer
             var raisedCard = movingCard with
             {
                 X = movingCard.X - 1,
-                Y = movingCard.Y - 1
+                Y = Math.Max(BoardLayoutEngine.ContentStartRow, movingCard.Y - 1)
             };
             BoardCardRenderer.DrawShadow(canvas, raisedCard);
             data.CardTypes.TryGetValue(raisedCard.Card.CardTypeId, out var cardType);
-            BoardCardRenderer.Draw(
+            BoardCardRenderer.DrawCompact(
                 canvas,
                 raisedCard,
                 BoardStyles.ResolveCard(cardType),
+                SlickColour(raisedCard),
                 selected: raisedCard.Card.Id == selectedCardId,
                 moving: true);
         }
 
         BoardChromeRenderer.DrawScrollIndicators(canvas, layout.Columns, layout.Cards);
         return new TerminalFrame(canvas);
+
+        Rgb? SlickColour(BoardLayoutCard card)
+        {
+            if (card.Card.SlickId is not int id) return null;
+            data.Slicks.TryGetValue(id, out var slick);
+            return BoardStyles.ResolveSlick(slick, id);
+        }
     }
 }

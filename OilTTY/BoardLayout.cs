@@ -180,14 +180,13 @@ internal sealed class BoardLayoutEngine
     {
         var result = new List<BoardLayoutCard>();
         var y = ContentStartRow;
-        BoardCard? previous = null;
         for (var index = firstCard; index < column.Column.Cards.Count; index++)
         {
             var card = column.Column.Cards[index];
-            var cardWidth = Math.Max(12, column.Width - 4);
-            var needsSpacerAbove = previous is null
-                ? card.SlickId is not null
-                : previous.SlickId is not null || card.SlickId is not null;
+            var cardWidth = Math.Max(12, column.Width - 6);
+            // Only the first exposed slick cap needs a row. Adjacent cards
+            // share their existing edge rows, even when their slicks differ.
+            var needsSpacerAbove = index == firstCard && card.SlickId is not null;
             var cardY = y + (needsSpacerAbove ? 1 : 0);
             var titleLines = ResolveTitleLines(card, cardWidth);
             var assignedUserLabel = ResolveAssignedUserLabel(card);
@@ -223,7 +222,7 @@ internal sealed class BoardLayoutEngine
                     cardHeight++;
                 }
             }
-            var requiredBottom = cardY + cardHeight + (card.SlickId is not null ? 1 : 0);
+            var requiredBottom = cardY + cardHeight;
             if (cardY >= contentBottom)
             {
                 break;
@@ -232,7 +231,7 @@ internal sealed class BoardLayoutEngine
             result.Add(new BoardLayoutCard(
                 card,
                 column,
-                column.X + 2,
+                column.X + 3,
                 cardY,
                 cardWidth,
                 cardHeight,
@@ -240,7 +239,6 @@ internal sealed class BoardLayoutEngine
                 assignedUserLabel,
                 checklistLabel));
             y = cardY + cardHeight;
-            previous = card;
             if (requiredBottom > contentBottom)
             {
                 break;
@@ -251,7 +249,7 @@ internal sealed class BoardLayoutEngine
     }
 
     private static bool CardExtendsPastViewport(BoardLayoutCard card, int contentBottom) =>
-        card.Y + card.Height + (card.Card.SlickId is null ? 0 : 1) > contentBottom;
+        card.Y + card.Height > contentBottom;
 
     private static int TitleEmojiWidth(BoardCard card) =>
         string.IsNullOrWhiteSpace(card.CardTypeEmoji)

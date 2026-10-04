@@ -111,6 +111,7 @@ internal static class BoardStyles
     private static OilTTYTheme _theme = OilTTYTheme.Dark;
 
     public static Rgb RootBackground => _palette.RootBackground;
+    public static Rgb BoardBackground => _theme == OilTTYTheme.Light ? PanelBackground : RootBackground;
     public static Rgb PanelBackground => _palette.PanelBackground;
     public static Rgb CardBackground => _palette.CardBackground;
     public static Rgb TextStrong => _palette.TextStrong;
