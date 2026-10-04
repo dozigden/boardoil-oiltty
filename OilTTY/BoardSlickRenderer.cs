@@ -52,12 +52,29 @@ internal static class BoardSlickRenderer
                 Put(right, card.Y, "🭐", colour, root);
                 Put(left, bottom - 1, "🭀", root, colour);
                 Put(right, bottom - 1, "🭋", root, colour);
-                var above = visibleCards.Any(other => other.Column.Slot == card.Column.Slot
+                var above = visibleCards.FirstOrDefault(other => other.Column.Slot == card.Column.Slot
                     && other.Y + other.Height == card.Y);
-                var below = visibleCards.Any(other => other.Column.Slot == card.Column.Slot
+                var below = visibleCards.FirstOrDefault(other => other.Column.Slot == card.Column.Slot
                     && other.Y == bottom);
-                if (!above) Cap(card, true);
-                if (!below) Cap(card, false);
+                if (above is null) Cap(card, true);
+                if (below is null) Cap(card, false);
+
+                var plainAbove = above is not null && above.Card.SlickId is null;
+                var plainBelow = below is not null && below.Card.SlickId is null;
+                // Finish at the outside of the slick's edge row, not at the
+                // card face a third-row inside it. The straight side continues
+                // into the first third of the bottom corner (last third at the
+                // top), so no inset-coloured ledge remains beyond the taper.
+                if (plainAbove)
+                {
+                    Put(left, card.Y, "🭄", colour, root);
+                    Put(right, card.Y, "🭏", colour, root);
+                }
+                if (plainBelow)
+                {
+                    Put(left, bottom - 1, "🬿", root, colour);
+                    Put(right, bottom - 1, "🭊", root, colour);
+                }
             }
 
             var matching = runs.Where(run => run.Id == group.Key).ToArray();
